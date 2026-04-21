@@ -1,7 +1,9 @@
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useState } from 'react';
+import { Audio } from 'expo-av';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   StatusBar,
   StyleSheet,
   Text,
@@ -9,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { RootStackParamList } from '../../App';
+import { useCat } from '../context/CatContext';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Translate'>;
@@ -49,20 +52,68 @@ const locale: keyof typeof COPY = 'ja';
 const t = COPY[locale];
 
 type AppState = 'idle' | 'analyzing' | 'result';
+type RecordingState = 'idle' | 'recording';
+
+function pickRandom(): CatResult {
+  return MOCK_RESULTS[Math.floor(Math.random() * MOCK_RESULTS.length)];
+}
 
 export default function TranslateScreen({ navigation }: Props) {
-  const [appState, setAppState] = useState<AppState>('idle');
-  const [result, setResult] = useState<CatResult | null>(null);
+  const { addLog } = useCat();
+  const [appState, setAppState]           = useState<AppState>('idle');
+  const [result, setResult]               = useState<CatResult | null>(null);
+  const [recordingState, setRecordingState] = useState<RecordingState>('idle');
+  const [recording, setRecording]         = useState<Audio.Recording | null>(null);
+  const [permissionError, setPermissionError] = useState(false);
 
-  const handlePress = () => {
-    setAppState('analyzing');
-    setResult(null);
-    setTimeout(() => {
-      const picked = MOCK_RESULTS[Math.floor(Math.random() * MOCK_RESULTS.length)];
-      setResult(picked);
-      setAppState('result');
-    }, 1200);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
+
+  useEffect(() => {
+    if (recordingState === 'recording') {
+      pulseLoop.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 0.4, duration: 600, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1.0, duration: 600, useNativeDriver: true }),
+        ])
+      );
+      pulseLoop.current.start();
+    } else {
+      pulseLoop.current?.stop();
+      pulseAnim.setValue(1);
+    }
+  }, [recordingState]);
+
+  const handleRecordPress = async () => {
+    if (recordingState === 'idle') {
+      setPermissionError(false);
+      const { granted } = await Audio.requestPermissionsAsync();
+      if (!granted) {
+        setPermissionError(true);
+        return;
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording: rec } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      setRecording(rec);
+      setRecordingState('recording');
+    } else {
+      await recording?.stopAndUnloadAsync();
+      setRecording(null);
+      setRecordingState('idle');
+      setAppState('analyzing');
+      setResult(null);
+      setTimeout(() => {
+        const chosen = pickRandom();
+        setResult(chosen);
+        setAppState('result');
+        addLog({ direction: 'cat_to_human', catSound: chosen.catSubtitle, text: chosen.translatedText });
+      }, 1500);
+    }
   };
+
+  const isAnalyzing = appState === 'analyzing';
 
   return (
     <View style={styles.container}>
@@ -77,7 +128,7 @@ export default function TranslateScreen({ navigation }: Props) {
         <Text style={styles.subtitle}>{t.subtitle}</Text>
       </View>
 
-      {appState === 'analyzing' && (
+      {isAnalyzing && (
         <View style={styles.card}>
           <ActivityIndicator size="large" color="#a0e0c0" />
           <Text style={styles.analyzingText}>{t.analyzing}</Text>
@@ -91,7 +142,7 @@ export default function TranslateScreen({ navigation }: Props) {
             <Text style={styles.catSubtitle}>{result.catSubtitle}</Text>
             <Text style={styles.translatedText}>{result.translatedText}</Text>
           </View>
-          <TouchableOpacity style={styles.buttonRepeat} onPress={handlePress} activeOpacity={0.75}>
+          <TouchableOpacity style={styles.buttonRepeat} onPress={() => setAppState('idle')} activeOpacity={0.75}>
             <Text style={styles.buttonRepeatText}>{t.listenAgain}</Text>
           </TouchableOpacity>
         </>
@@ -99,11 +150,26 @@ export default function TranslateScreen({ navigation }: Props) {
 
       {appState === 'idle' && <View style={styles.cardPlaceholder} />}
 
-      {appState === 'idle' && (
-        <TouchableOpacity style={styles.button} onPress={handlePress} activeOpacity={0.75}>
-          <Text style={styles.buttonText}>{t.listen}</Text>
-        </TouchableOpacity>
+      {!isAnalyzing && appState !== 'result' && (
+        <View style={styles.recSection}>
+          <Text style={styles.recLabel}>猫の声を聞かせる</Text>
+          <Animated.View style={{ opacity: recordingState === 'recording' ? pulseAnim : 1 }}>
+            <TouchableOpacity
+              style={[styles.recButton, recordingState === 'recording' && styles.recButtonActive]}
+              onPress={handleRecordPress}
+              activeOpacity={0.75}
+            >
+              <Text style={[styles.recButtonText, recordingState === 'recording' && styles.recButtonTextActive]}>
+                {recordingState === 'recording' ? '■ STOP' : '● REC'}
+              </Text>
+            </TouchableOpacity>
+          </Animated.View>
+          {permissionError && (
+            <Text style={styles.permissionError}>マイクのアクセスを許可してください</Text>
+          )}
+        </View>
       )}
+
     </View>
   );
 }
@@ -185,6 +251,43 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: 2,
     marginTop: 8,
+  },
+  recSection: {
+    alignItems: 'center',
+    gap: 0,
+  },
+  recLabel: {
+    color: '#888888',
+    fontSize: 12,
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  recButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 1,
+    borderColor: '#a0e0c0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recButtonActive: {
+    backgroundColor: '#e05050',
+    borderColor: '#e05050',
+  },
+  recButtonText: {
+    color: '#a0e0c0',
+    fontSize: 14,
+    letterSpacing: 2,
+  },
+  recButtonTextActive: {
+    color: '#ffffff',
+  },
+  permissionError: {
+    color: '#e05050',
+    fontSize: 12,
+    marginTop: 8,
+    textAlign: 'center',
   },
   button: {
     backgroundColor: '#a0e0c0',

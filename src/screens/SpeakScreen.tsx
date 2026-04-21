@@ -1,5 +1,6 @@
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useState } from 'react';
+import { Audio } from 'expo-av';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -12,6 +13,34 @@ import {
   View,
 } from 'react-native';
 import { RootStackParamList } from '../../App';
+import { useCat } from '../context/CatContext';
+
+const SOUND_MAP: Record<string, any> = {
+  love:    require('../../assets/sounds/nyan_love.wav'),
+  cute:    require('../../assets/sounds/nyan_cute.wav'),
+  food:    require('../../assets/sounds/nyan_food.wav'),
+  play:    require('../../assets/sounds/nyan_play.wav'),
+  sleep:   require('../../assets/sounds/nyan_sleep.mp3'),
+  lonely:  require('../../assets/sounds/nyan_lonely.wav'),
+  no:      require('../../assets/sounds/nyan_no.m4a'),
+  default: require('../../assets/sounds/nyan_default.wav'),
+};
+
+async function playSound(soundKey: string): Promise<void> {
+  try {
+    const { sound } = await Audio.Sound.createAsync(
+      SOUND_MAP[soundKey] ?? SOUND_MAP['default']
+    );
+    await sound.playAsync();
+    sound.setOnPlaybackStatusUpdate((status) => {
+      if (status.isLoaded && status.didJustFinish) {
+        sound.unloadAsync();
+      }
+    });
+  } catch (e) {
+    // silently ignore playback errors
+  }
+}
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Speak'>;
@@ -22,30 +51,44 @@ type UiState = 'idle' | 'loading' | 'result';
 type CatReply = {
   catSound: string;
   responseText: string;
+  soundKey: string;
 };
 
 function getLocalCatResponse(input: string): CatReply {
   if (/好き|大好き|愛してる/.test(input))
-    return { catSound: 'にゃぁ…♡', responseText: '…うれしいにゃ。もっと言ってほしいにゃ。' };
+    return { catSound: 'にゃぁ…♡', responseText: '…うれしいにゃ。もっと言ってほしいにゃ。', soundKey: 'love' };
   if (/かわいい|きれい/.test(input))
-    return { catSound: 'ふにゃ', responseText: 'わかってるにゃ。でも、もっと言うにゃ。' };
+    return { catSound: 'ふにゃ', responseText: 'わかってるにゃ。でも、もっと言うにゃ。', soundKey: 'cute' };
   if (/ごはん|ご飯|食べ|おなか/.test(input))
-    return { catSound: 'にゃーっ！', responseText: 'はやくするにゃ！待ってるにゃ！' };
+    return { catSound: 'にゃーっ！', responseText: 'はやくするにゃ！待ってるにゃ！', soundKey: 'food' };
   if (/遊|あそ|遊ぼ/.test(input))
-    return { catSound: 'みゃっ！', responseText: 'いいにゃ！今すぐ来るにゃ！' };
+    return { catSound: 'みゃっ！', responseText: 'いいにゃ！今すぐ来るにゃ！', soundKey: 'play' };
   if (/ねむ|眠|寝よ|おやすみ/.test(input))
-    return { catSound: 'ごろ…にゃ', responseText: '…いっしょに寝るにゃ。あったかいにゃ。' };
+    return { catSound: 'ごろ…にゃ', responseText: '…いっしょに寝るにゃ。あったかいにゃ。', soundKey: 'sleep' };
   if (/どこ|いない|さびし|寂し/.test(input))
-    return { catSound: 'にゃ…？', responseText: 'ちゃんとここにいるにゃ。心配しなくていいにゃ。' };
+    return { catSound: 'にゃ…？', responseText: 'ちゃんとここにいるにゃ。心配しなくていいにゃ。', soundKey: 'lonely' };
   if (/だめ|ダメ|やめ|こら/.test(input))
-    return { catSound: 'むにゃ', responseText: '…別にいいじゃないにゃ。' };
-  return { catSound: 'にゃ', responseText: '…なんか言ってるにゃ。よくわからないにゃ。' };
+    return { catSound: 'むにゃ', responseText: '…別にいいじゃないにゃ。', soundKey: 'no' };
+  return { catSound: 'にゃ', responseText: '…なんか言ってるにゃ。よくわからないにゃ。', soundKey: 'default' };
 }
 
 export default function SpeakScreen({ navigation }: Props) {
+  const { addLog } = useCat();
   const [inputText, setInputText] = useState('');
   const [uiState, setUiState] = useState<UiState>('idle');
-  const [result, setResult] = useState<CatReply | null>(null);
+  const [result, setResult] = useState<{
+    catSound: string;
+    responseText: string;
+    soundKey: string;
+  } | null>(null);
+
+  useEffect(() => {
+    Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      allowsRecordingIOS: false,
+      staysActiveInBackground: false,
+    });
+  }, []);
 
   const canSend = inputText.trim().length > 0;
 
@@ -54,8 +97,11 @@ export default function SpeakScreen({ navigation }: Props) {
     setUiState('loading');
     setResult(null);
     setTimeout(() => {
-      setResult(getLocalCatResponse(inputText.trim()));
+      const res = getLocalCatResponse(inputText.trim());
+      setResult(res);
       setUiState('result');
+      playSound(res.soundKey);
+      addLog({ direction: 'human_to_cat', catSound: res.catSound, text: res.responseText });
     }, 1000);
   };
 
@@ -120,6 +166,9 @@ export default function SpeakScreen({ navigation }: Props) {
               <Text style={styles.moodBadge}>猫語</Text>
               <Text style={styles.catSound}>{result.catSound}</Text>
               <Text style={styles.translatedText}>{result.responseText}</Text>
+              <TouchableOpacity onPress={() => playSound(result.soundKey)} activeOpacity={0.75}>
+                <Text style={styles.replayText}>▶ もう一度再生</Text>
+              </TouchableOpacity>
             </View>
             <TouchableOpacity style={styles.buttonRepeat} onPress={handleReset} activeOpacity={0.75}>
               <Text style={styles.buttonRepeatText}>もう一度話しかける</Text>
@@ -247,6 +296,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 36,
     borderRadius: 40,
+  },
+  replayText: {
+    color: '#a0e0c0',
+    fontSize: 13,
+    marginTop: 12,
+    alignSelf: 'center',
   },
   buttonRepeatText: {
     color: '#a0e0c0',

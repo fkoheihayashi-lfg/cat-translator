@@ -8,29 +8,16 @@ import {
   View,
 } from 'react-native';
 import { RootStackParamList } from '../../App';
+import { useCat } from '../context/CatContext';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Log'>;
 };
 
-type LogEntry = {
-  id: number;
-  direction: 'cat_to_human' | 'human_to_cat';
-  catSound: string;
-  text: string;
-  timestamp: string;
-};
-
-const MOCK_LOG: LogEntry[] = [
-  { id: 1, direction: 'cat_to_human', catSound: 'にゃーっ！', text: 'ごはんのこと、そろそろ思い出してくれた？',  timestamp: '今日 14:32' },
-  { id: 2, direction: 'human_to_cat', catSound: 'にゃぁ…♡',  text: '…うれしいにゃ。もっと言ってほしいにゃ。',  timestamp: '今日 13:15' },
-  { id: 3, direction: 'cat_to_human', catSound: 'みゃ？',     text: 'それなに？ちょっと気になる。',              timestamp: '今日 11:02' },
-  { id: 4, direction: 'human_to_cat', catSound: 'にゃーっ！', text: 'はやくするにゃ！待ってるにゃ！',            timestamp: '昨日 20:44' },
-  { id: 5, direction: 'cat_to_human', catSound: 'ごろ…にゃ',  text: 'うん、いまは落ち着いてるよ。',             timestamp: '昨日 18:30' },
-  { id: 6, direction: 'human_to_cat', catSound: 'ふにゃ',     text: 'わかってるにゃ。でも、もっと言うにゃ。',  timestamp: '昨日 10:11' },
-];
-
 export default function LogScreen({ navigation }: Props) {
+  const { log } = useCat();
+  const entries = [...log].reverse();
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -49,7 +36,13 @@ export default function LogScreen({ navigation }: Props) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {MOCK_LOG.map((entry) => {
+        {entries.length === 0 && (
+          <View style={styles.empty}>
+            <Text style={styles.emptyTitle}>まだ会話がありません</Text>
+            <Text style={styles.emptySubtitle}>猫の声を聞かせてみてください</Text>
+          </View>
+        )}
+        {entries.map((entry) => {
           const isCatToHuman = entry.direction === 'cat_to_human';
           return (
             <View key={entry.id} style={styles.card}>
@@ -153,6 +146,19 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 20,
     letterSpacing: 1,
+  },
+  empty: {
+    alignItems: 'center',
+    marginTop: 60,
+  },
+  emptyTitle: {
+    color: '#444444',
+    fontSize: 14,
+  },
+  emptySubtitle: {
+    color: '#333333',
+    fontSize: 12,
+    marginTop: 6,
   },
   entryText: {
     color: '#aaaaaa',

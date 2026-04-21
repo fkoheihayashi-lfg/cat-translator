@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { RootStackParamList } from '../../App';
+import { useCat } from '../context/CatContext';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Profile'>;
@@ -17,11 +18,13 @@ type Props = {
 const PERSONALITIES = ['甘えん坊', 'マイペース', '好奇心旺盛', 'クール'] as const;
 
 export default function ProfileScreen({ navigation }: Props) {
-  const [catName, setCatName]       = useState('');
-  const [personality, setPersonality] = useState<string>('甘えん坊');
+  const { profile, setProfile } = useCat();
+  const [catName, setCatName]       = useState(profile.name);
+  const [personality, setPersonality] = useState(profile.personality);
   const [saved, setSaved]           = useState(false);
 
   const handleSave = () => {
+    setProfile({ name: catName, personality });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

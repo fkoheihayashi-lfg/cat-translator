@@ -1,12 +1,15 @@
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { RootStackParamList } from '../../App';
+import { useCat } from '../context/CatContext';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList>;
 };
 
 export default function HomeScreen({ navigation }: Props) {
+  const { profile, log } = useCat();
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -53,7 +56,12 @@ export default function HomeScreen({ navigation }: Props) {
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.footer}>◆ NO CAT DATA LOADED</Text>
+      <Text style={[styles.footer, profile.name ? styles.footerActive : undefined]}>
+        {profile.name ? `◆ ${profile.name} との通信中` : '◆ NO CAT DATA LOADED'}
+      </Text>
+      {log.length > 0 && (
+        <Text style={styles.logCount}>会話 {log.length} 件</Text>
+      )}
     </View>
   );
 }
@@ -133,5 +141,13 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     fontFamily: 'monospace',
     marginTop: 40,
+  },
+  footerActive: {
+    color: '#a0e0c0',
+  },
+  logCount: {
+    color: '#666666',
+    fontSize: 10,
+    marginTop: 4,
   },
 });
