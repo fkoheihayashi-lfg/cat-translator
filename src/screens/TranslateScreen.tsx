@@ -11,6 +11,8 @@ import {
   View,
 } from 'react-native';
 import { RootStackParamList } from '../../App';
+import { CatAvatarProps } from '../components/CatAvatar';
+import CatAvatar from '../components/CatAvatar';
 import { useCat } from '../context/CatContext';
 
 type Props = {
@@ -24,35 +26,68 @@ type CatResult = {
 };
 
 const MOCK_RESULTS: CatResult[] = [
-  { mood: '甘え', catSubtitle: 'にゃぁ…', translatedText: 'ねえ、ちょっと構ってほしいんだけど。' },
-  { mood: '要求', catSubtitle: 'にゃー！', translatedText: 'ごはんのこと、そろそろ思い出してくれた？' },
-  { mood: '不満', catSubtitle: 'むぅにゃ', translatedText: '今はあんまり触られたい気分じゃないかも。' },
-  { mood: '興味', catSubtitle: 'みゃ？', translatedText: 'それなに？ちょっと気になる。' },
+  { mood: '甘え', catSubtitle: 'にゃぁ…',  translatedText: 'ねえ、ちょっと構ってほしいんだけど。' },
+  { mood: '要求', catSubtitle: 'にゃー！',  translatedText: 'ごはんのこと、そろそろ思い出してくれた？' },
+  { mood: '不満', catSubtitle: 'むぅにゃ',  translatedText: '今はあんまり触られたい気分じゃないかも。' },
+  { mood: '興味', catSubtitle: 'みゃ？',    translatedText: 'それなに？ちょっと気になる。' },
   { mood: '安心', catSubtitle: 'ごろ…にゃ', translatedText: 'うん、いまは落ち着いてるよ。' },
 ];
+
+const SOUND_MAP: Record<string, any> = {
+  love:    require('../../assets/sounds/nyan_love.wav'),
+  cute:    require('../../assets/sounds/nyan_cute.wav'),
+  food:    require('../../assets/sounds/nyan_food.wav'),
+  play:    require('../../assets/sounds/nyan_play.wav'),
+  sleep:   require('../../assets/sounds/nyan_sleep.mp3'),
+  lonely:  require('../../assets/sounds/nyan_lonely.wav'),
+  no:      require('../../assets/sounds/nyan_no.m4a'),
+  default: require('../../assets/sounds/nyan_default.wav'),
+};
+
+const MOOD_SOUND: Record<string, string> = {
+  '甘え': 'love',
+  '要求': 'food',
+  '不満': 'no',
+  '興味': 'play',
+  '安心': 'sleep',
+};
+
+const MOOD_AVATAR: Record<string, CatAvatarProps['mood']> = {
+  '甘え': 'happy',
+  '要求': 'hungry',
+  '不満': 'upset',
+  '興味': 'curious',
+  '安心': 'sleepy',
+};
 
 const COPY = {
   ja: {
     title: 'CAT TRANSLATOR',
     subtitle: 'Cat → Human Interpreter',
-    listen: '聞かせる',
     listenAgain: 'もう一度聞かせる',
     analyzing: '解析中…',
   },
-  en: {
-    title: 'CAT TRANSLATOR',
-    subtitle: 'Cat → Human Interpreter',
-    listen: 'Listen',
-    listenAgain: 'Listen Again',
-    analyzing: 'Analyzing…',
-  },
 } as const;
+const t = COPY.ja;
 
-const locale: keyof typeof COPY = 'ja';
-const t = COPY[locale];
+async function playSound(soundKey: string): Promise<void> {
+  try {
+    const { sound } = await Audio.Sound.createAsync(
+      SOUND_MAP[soundKey] ?? SOUND_MAP['default']
+    );
+    await sound.playAsync();
+    sound.setOnPlaybackStatusUpdate((status) => {
+      if (status.isLoaded && status.didJustFinish) {
+        sound.unloadAsync();
+      }
+    });
+  } catch (e) {}
+}
 
 type AppState = 'idle' | 'analyzing' | 'result';
 type RecordingState = 'idle' | 'recording';
+
+const BAR_DURATIONS = [280, 340, 220, 380, 260];
 
 function pickRandom(): CatResult {
   return MOCK_RESULTS[Math.floor(Math.random() * MOCK_RESULTS.length)];
@@ -60,15 +95,33 @@ function pickRandom(): CatResult {
 
 export default function TranslateScreen({ navigation }: Props) {
   const { addLog } = useCat();
-  const [appState, setAppState]           = useState<AppState>('idle');
-  const [result, setResult]               = useState<CatResult | null>(null);
+  const [appState, setAppState]             = useState<AppState>('idle');
+  const [result, setResult]                 = useState<CatResult | null>(null);
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
-  const [recording, setRecording]         = useState<Audio.Recording | null>(null);
+  const [recording, setRecording]           = useState<Audio.Recording | null>(null);
   const [permissionError, setPermissionError] = useState(false);
 
+  // Pulse animation for REC button
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
 
+  // Waveform bar animations
+  const barAnims = useRef(BAR_DURATIONS.map(() => new Animated.Value(4))).current;
+  const barLoops = useRef<Animated.CompositeAnimation[]>([]);
+
+  // Result card fade-in
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Audio mode on mount
+  useEffect(() => {
+    Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      allowsRecordingIOS: false,
+      staysActiveInBackground: false,
+    });
+  }, []);
+
+  // Pulse + waveform lifecycle
   useEffect(() => {
     if (recordingState === 'recording') {
       pulseLoop.current = Animated.loop(
@@ -78,11 +131,31 @@ export default function TranslateScreen({ navigation }: Props) {
         ])
       );
       pulseLoop.current.start();
+
+      barLoops.current = barAnims.map((anim, i) =>
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(anim, { toValue: 36, duration: BAR_DURATIONS[i], useNativeDriver: false }),
+            Animated.timing(anim, { toValue: 4,  duration: BAR_DURATIONS[i], useNativeDriver: false }),
+          ])
+        )
+      );
+      barLoops.current.forEach((loop) => loop.start());
     } else {
       pulseLoop.current?.stop();
       pulseAnim.setValue(1);
+      barLoops.current.forEach((loop) => loop.stop());
+      barAnims.forEach((anim) => anim.setValue(4));
     }
   }, [recordingState]);
+
+  // Fade in result card
+  useEffect(() => {
+    if (result !== null) {
+      fadeAnim.setValue(0);
+      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+    }
+  }, [result]);
 
   const handleRecordPress = async () => {
     if (recordingState === 'idle') {
@@ -109,6 +182,7 @@ export default function TranslateScreen({ navigation }: Props) {
         setResult(chosen);
         setAppState('result');
         addLog({ direction: 'cat_to_human', catSound: chosen.catSubtitle, text: chosen.translatedText });
+        playSound(MOOD_SOUND[chosen.mood] ?? 'default');
       }, 1500);
     }
   };
@@ -137,11 +211,18 @@ export default function TranslateScreen({ navigation }: Props) {
 
       {appState === 'result' && result && (
         <>
-          <View style={styles.card}>
+          <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
+            <CatAvatar mood={MOOD_AVATAR[result.mood] ?? 'neutral'} size="large" />
             <Text style={styles.moodBadge}>{result.mood}</Text>
             <Text style={styles.catSubtitle}>{result.catSubtitle}</Text>
             <Text style={styles.translatedText}>{result.translatedText}</Text>
-          </View>
+            <TouchableOpacity
+              onPress={() => playSound(MOOD_SOUND[result.mood] ?? 'default')}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.replayText}>▶ もう一度再生</Text>
+            </TouchableOpacity>
+          </Animated.View>
           <TouchableOpacity style={styles.buttonRepeat} onPress={() => setAppState('idle')} activeOpacity={0.75}>
             <Text style={styles.buttonRepeatText}>{t.listenAgain}</Text>
           </TouchableOpacity>
@@ -153,6 +234,15 @@ export default function TranslateScreen({ navigation }: Props) {
       {!isAnalyzing && appState !== 'result' && (
         <View style={styles.recSection}>
           <Text style={styles.recLabel}>猫の声を聞かせる</Text>
+
+          {recordingState === 'recording' && (
+            <View style={styles.waveform}>
+              {barAnims.map((anim, i) => (
+                <Animated.View key={i} style={[styles.waveBar, { height: anim }]} />
+              ))}
+            </View>
+          )}
+
           <Animated.View style={{ opacity: recordingState === 'recording' ? pulseAnim : 1 }}>
             <TouchableOpacity
               style={[styles.recButton, recordingState === 'recording' && styles.recButtonActive]}
@@ -164,12 +254,12 @@ export default function TranslateScreen({ navigation }: Props) {
               </Text>
             </TouchableOpacity>
           </Animated.View>
+
           {permissionError && (
             <Text style={styles.permissionError}>マイクのアクセスを許可してください</Text>
           )}
         </View>
       )}
-
     </View>
   );
 }
@@ -252,15 +342,32 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     marginTop: 8,
   },
+  replayText: {
+    color: '#a0e0c0',
+    fontSize: 13,
+    marginTop: 12,
+    alignSelf: 'center',
+  },
   recSection: {
     alignItems: 'center',
-    gap: 0,
+    gap: 8,
   },
   recLabel: {
     color: '#888888',
     fontSize: 12,
     letterSpacing: 1,
-    marginBottom: 8,
+  },
+  waveform: {
+    height: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  waveBar: {
+    width: 4,
+    borderRadius: 2,
+    backgroundColor: '#a0e0c0',
   },
   recButton: {
     width: 80,
@@ -286,20 +393,7 @@ const styles = StyleSheet.create({
   permissionError: {
     color: '#e05050',
     fontSize: 12,
-    marginTop: 8,
     textAlign: 'center',
-  },
-  button: {
-    backgroundColor: '#a0e0c0',
-    paddingVertical: 16,
-    paddingHorizontal: 48,
-    borderRadius: 40,
-  },
-  buttonText: {
-    color: '#0e0e14',
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: 4,
   },
   buttonRepeat: {
     borderWidth: 1,

@@ -1,8 +1,9 @@
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Audio } from 'expo-av';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   KeyboardAvoidingView,
   Platform,
   StatusBar,
@@ -13,6 +14,8 @@ import {
   View,
 } from 'react-native';
 import { RootStackParamList } from '../../App';
+import { CatAvatarProps } from '../components/CatAvatar';
+import CatAvatar from '../components/CatAvatar';
 import { useCat } from '../context/CatContext';
 
 const SOUND_MAP: Record<string, any> = {
@@ -24,6 +27,17 @@ const SOUND_MAP: Record<string, any> = {
   lonely:  require('../../assets/sounds/nyan_lonely.wav'),
   no:      require('../../assets/sounds/nyan_no.m4a'),
   default: require('../../assets/sounds/nyan_default.wav'),
+};
+
+const SOUND_AVATAR: Record<string, CatAvatarProps['mood']> = {
+  love:    'happy',
+  cute:    'happy',
+  food:    'hungry',
+  play:    'curious',
+  sleep:   'sleepy',
+  lonely:  'upset',
+  no:      'upset',
+  default: 'neutral',
 };
 
 async function playSound(soundKey: string): Promise<void> {
@@ -76,11 +90,9 @@ export default function SpeakScreen({ navigation }: Props) {
   const { addLog } = useCat();
   const [inputText, setInputText] = useState('');
   const [uiState, setUiState] = useState<UiState>('idle');
-  const [result, setResult] = useState<{
-    catSound: string;
-    responseText: string;
-    soundKey: string;
-  } | null>(null);
+  const [result, setResult] = useState<CatReply | null>(null);
+
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Audio.setAudioModeAsync({
@@ -89,6 +101,13 @@ export default function SpeakScreen({ navigation }: Props) {
       staysActiveInBackground: false,
     });
   }, []);
+
+  useEffect(() => {
+    if (result !== null) {
+      fadeAnim.setValue(0);
+      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+    }
+  }, [result]);
 
   const canSend = inputText.trim().length > 0;
 
@@ -162,14 +181,15 @@ export default function SpeakScreen({ navigation }: Props) {
 
         {uiState === 'result' && result && (
           <>
-            <View style={styles.card}>
+            <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
+              <CatAvatar mood={SOUND_AVATAR[result.soundKey] ?? 'neutral'} size="large" />
               <Text style={styles.moodBadge}>猫語</Text>
               <Text style={styles.catSound}>{result.catSound}</Text>
               <Text style={styles.translatedText}>{result.responseText}</Text>
               <TouchableOpacity onPress={() => playSound(result.soundKey)} activeOpacity={0.75}>
                 <Text style={styles.replayText}>▶ もう一度再生</Text>
               </TouchableOpacity>
-            </View>
+            </Animated.View>
             <TouchableOpacity style={styles.buttonRepeat} onPress={handleReset} activeOpacity={0.75}>
               <Text style={styles.buttonRepeatText}>もう一度話しかける</Text>
             </TouchableOpacity>
@@ -290,18 +310,18 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     marginTop: 8,
   },
+  replayText: {
+    color: '#a0e0c0',
+    fontSize: 13,
+    marginTop: 12,
+    alignSelf: 'center',
+  },
   buttonRepeat: {
     borderWidth: 1,
     borderColor: '#a0e0c0',
     paddingVertical: 12,
     paddingHorizontal: 36,
     borderRadius: 40,
-  },
-  replayText: {
-    color: '#a0e0c0',
-    fontSize: 13,
-    marginTop: 12,
-    alignSelf: 'center',
   },
   buttonRepeatText: {
     color: '#a0e0c0',

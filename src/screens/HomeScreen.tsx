@@ -1,5 +1,6 @@
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { RootStackParamList } from '../../App';
 import { useCat } from '../context/CatContext';
 
@@ -10,12 +11,27 @@ type Props = {
 export default function HomeScreen({ navigation }: Props) {
   const { profile, log } = useCat();
 
+  const blink = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(blink, { toValue: 0, duration: 500, useNativeDriver: true }),
+        Animated.timing(blink, { toValue: 1, duration: 500, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
       <View style={styles.top}>
-        <Text style={styles.commLink}>CAT COMM LINK ◆ ACTIVE</Text>
+        <View style={styles.commLinkRow}>
+          <Text style={styles.commLink}>CAT COMM LINK </Text>
+          <Animated.Text style={[styles.commLink, { opacity: blink }]}>◆</Animated.Text>
+          <Text style={styles.commLink}> ACTIVE</Text>
+        </View>
         <Text style={styles.title}>CAT TRANSLATOR</Text>
         <Text style={styles.subtitle}>Cat · Human Interpreter</Text>
       </View>
@@ -79,13 +95,17 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 48,
   },
+  commLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    opacity: 0.6,
+  },
   commLink: {
     color: '#a0e0c0',
     fontSize: 10,
     letterSpacing: 3,
     fontFamily: 'monospace',
-    opacity: 0.6,
-    marginBottom: 4,
   },
   title: {
     color: '#a0e0c0',
