@@ -32,6 +32,8 @@ API contract:
 - Request format: `multipart/form-data`
 - File field name: `audio`
 
+This contract is mirrored in `src/config/audioAnalysis.ts` and should be updated together.
+
 ## Expo App Config
 
 Set these before starting Expo:
@@ -48,6 +50,7 @@ Notes:
 - Your phone and Mac must be on the same Wi-Fi network
 - Flask must be running with host `0.0.0.0`, which this app already does
 - If the server is unavailable, the app falls back to mock analysis automatically
+- In Expo dev builds, TranslateScreen shows a tiny bridge status line so you can quickly tell whether server mode is reachable
 
 Manual analysis check:
 
@@ -73,6 +76,7 @@ curl -X POST http://127.0.0.1:5001/analyze-audio \
 - First model load may be slow
 - TensorFlow / TF Hub install is heavy for local development
 - The endpoint is for local validation only and has no auth or production hardening
+- If the server is configured but unreachable, the app quietly falls back to mock analysis
 
 ## Later For Production
 

@@ -36,7 +36,7 @@ import {
   getCommunicationStatusText,
   getConversationThreadStatusText,
 } from '../logic/statusText';
-import { playSound, playSoundFromUri } from '../utils/playSound';
+import { playLoggedCatSound } from '../utils/playSound';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Conversation'>;
@@ -307,13 +307,12 @@ export default function ConversationScreen({ navigation }: Props) {
                     ) : null}
                     {entry.soundKey ? (
                       <TouchableOpacity
-                        onPress={() => {
-                          if (!isHuman && entry.recordingUri) {
-                            playSoundFromUri(entry.recordingUri, entry.soundKey);
-                          } else {
-                            playSound(entry.soundKey);
-                          }
-                        }}
+                        onPress={() =>
+                          playLoggedCatSound(
+                            !isHuman ? entry.recordingUri : undefined,
+                            entry.soundKey
+                          )
+                        }
                         activeOpacity={0.75}
                       >
                         <Text style={[styles.replayText, isHuman && styles.replayTextHuman]}>

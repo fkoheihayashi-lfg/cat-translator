@@ -15,14 +15,17 @@ import CatAvatar from '../components/CatAvatar';
 import { useCat } from '../context/CatContext';
 import { getMoodLabel, getStrings } from '../i18n/strings';
 import {
+  AudioAnalysisBridgeStatus,
   CatInterpretation,
+  checkAudioAnalysisBridgeStatus,
+  getAudioAnalysisBridgeDebugLabel,
   getAvatarMoodFromInterpretation,
 } from '../logic/analyzeCatAudio';
 import {
   runCatAudioAnalysisTransaction,
   startCatRecordingSession,
 } from '../logic/textConversation';
-import { playSound, playSoundFromUri } from '../utils/playSound';
+import { playLoggedCatSound } from '../utils/playSound';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Translate'>;
@@ -39,6 +42,7 @@ export default function TranslateScreen({ navigation }: Props) {
   const [appState, setAppState]             = useState<AppState>('idle');
   const [result, setResult]                 = useState<CatInterpretation | null>(null);
   const [resultUri, setResultUri]           = useState<string | undefined>(undefined);
+  const [bridgeStatus, setBridgeStatus]     = useState<AudioAnalysisBridgeStatus | null>(null);
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recording, setRecording]           = useState<Audio.Recording | null>(null);
   const [permissionError, setPermissionError] = useState(false);
@@ -56,6 +60,12 @@ export default function TranslateScreen({ navigation }: Props) {
   // Result card fade-in
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  const loadBridgeStatus = async (): Promise<void> => {
+    if (!__DEV__) return;
+    const status = await checkAudioAnalysisBridgeStatus();
+    setBridgeStatus(status);
+  };
+
   // Audio mode on mount
   useEffect(() => {
     Audio.setAudioModeAsync({
@@ -66,6 +76,20 @@ export default function TranslateScreen({ navigation }: Props) {
 
     return () => {
       recordingAbortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!__DEV__) return;
+
+    let active = true;
+    void (async () => {
+      const status = await checkAudioAnalysisBridgeStatus();
+      if (active) setBridgeStatus(status);
+    })();
+
+    return () => {
+      active = false;
     };
   }, []);
 
@@ -151,6 +175,7 @@ export default function TranslateScreen({ navigation }: Props) {
           onComplete: () => {
             actionLockRef.current = false;
             recordingAbortRef.current = null;
+            void loadBridgeStatus();
           },
         });
       } catch {
@@ -160,11 +185,13 @@ export default function TranslateScreen({ navigation }: Props) {
         setAppState('idle');
         setResult(null);
         recordingAbortRef.current = null;
+        void loadBridgeStatus();
       }
     }
   };
 
   const isAnalyzing = appState === 'analyzing';
+  const devBridgeLabel = getAudioAnalysisBridgeDebugLabel(bridgeStatus);
 
   return (
     <View style={styles.container}>
@@ -177,6 +204,7 @@ export default function TranslateScreen({ navigation }: Props) {
       <View style={styles.header}>
         <Text style={styles.title}>{strings.translate.title}</Text>
         <Text style={styles.subtitle}>{strings.translate.subtitle}</Text>
+        {!!devBridgeLabel && <Text style={styles.devStatus}>{devBridgeLabel}</Text>}
       </View>
 
       {isAnalyzing && (
@@ -194,13 +222,7 @@ export default function TranslateScreen({ navigation }: Props) {
             <Text style={styles.catSubtitle}>{result.catSubtitle}</Text>
             <Text style={styles.translatedText}>{result.translatedText}</Text>
             <TouchableOpacity
-              onPress={() => {
-                if (resultUri) {
-                  playSoundFromUri(resultUri, result.soundKey);
-                } else {
-                  playSound(result.soundKey);
-                }
-              }}
+              onPress={() => playLoggedCatSound(resultUri, result.soundKey)}
               activeOpacity={0.75}
             >
               <Text style={styles.replayText}>{strings.common.replayAgain}</Text>
@@ -287,6 +309,13 @@ const styles = StyleSheet.create({
     color: '#6a6a88',
     fontSize: 13,
     letterSpacing: 2,
+  },
+  devStatus: {
+    color: '#557565',
+    fontSize: 10,
+    letterSpacing: 1.8,
+    fontFamily: 'monospace',
+    marginTop: 2,
   },
   card: {
     width: '100%',

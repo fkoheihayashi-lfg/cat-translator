@@ -20,7 +20,7 @@ import { useCat } from '../context/CatContext';
 import { getStrings } from '../i18n/strings';
 import { CatReply, SOUND_AVATAR } from '../logic/generateCatReply';
 import { runHumanToCatTextTransaction } from '../logic/textConversation';
-import { playSound } from '../utils/playSound';
+import { playLoggedCatSound } from '../utils/playSound';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Speak'>;
@@ -157,7 +157,10 @@ export default function SpeakScreen({ navigation }: Props) {
             <Text style={styles.moodBadge}>{strings.speak.badge}</Text>
             <Text style={styles.catSound}>{result.catSound}</Text>
             <Text style={styles.translatedText}>{result.responseText}</Text>
-            <TouchableOpacity onPress={() => playSound(result.soundKey)} activeOpacity={0.75}>
+            <TouchableOpacity
+              onPress={() => playLoggedCatSound(undefined, result.soundKey)}
+              activeOpacity={0.75}
+            >
               <Text style={styles.replayText}>{strings.common.replayAgain}</Text>
             </TouchableOpacity>
           </Animated.View>

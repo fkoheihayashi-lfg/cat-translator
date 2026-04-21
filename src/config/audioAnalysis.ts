@@ -8,6 +8,7 @@ export type AudioAnalysisProvider = 'mock' | 'server';
 export const AUDIO_ANALYSIS_PORT = 5001;
 export const AUDIO_ANALYSIS_HEALTH_PATH = '/health';
 export const AUDIO_ANALYSIS_ENDPOINT_PATH = '/analyze-audio';
+export const AUDIO_ANALYSIS_FILE_FIELD = 'audio';
 
 const env = typeof process !== 'undefined' ? process?.env ?? {} : {};
 
@@ -30,6 +31,7 @@ function getTimeoutMs(): number {
 
 export const AUDIO_ANALYSIS_CONFIG = {
   provider: getProvider(),
+  // App/server contract lives here and in `server/app.py`.
   // Default is intentionally simulator-friendly.
   // Real devices usually need your Mac's LAN IP, for example:
   // http://192.168.1.23:5001

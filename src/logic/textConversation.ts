@@ -8,6 +8,7 @@ import {
   CatReply,
 } from './generateCatReply';
 import { NewLogEntry, buildCatToHumanLogEntry, buildHumanToCatLogEntry } from './logEntries';
+import { persistRecordingFile } from '../utils/recordingStorage';
 import { playSound } from '../utils/playSound';
 import { CatPersonaState, LogEntryLike } from './catPersona';
 
@@ -142,10 +143,12 @@ export async function runCatAudioAnalysisTransaction({
   onInterpretation,
   onComplete,
 }: RunCatAudioAnalysisTransactionOptions): Promise<CatInterpretation | null> {
-  const recordingUri = recording?.getURI() ?? undefined;
+  const tempRecordingUri = recording?.getURI() ?? undefined;
 
   try {
     await recording?.stopAndUnloadAsync();
+    // Persist first so replay and any server upload both use the same source-of-truth URI.
+    const recordingUri = await persistRecordingFile(tempRecordingUri);
     onStartAnalysis?.();
     await waitMs(delayMs, signal);
 

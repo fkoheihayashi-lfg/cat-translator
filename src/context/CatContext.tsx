@@ -41,6 +41,7 @@ const KEYS = {
 const DEFAULT_PROFILE: CatProfile = { name: '', personality: '甘えん坊' };
 const DEFAULT_LANGUAGE: AppLanguage = 'ja';
 
+// This provider is the source of truth for persisted profile/language/log state.
 // Migrate entries written before the LogEntry type was normalised.
 // Old shape: { id, direction, catSound, text, timestamp }
 function migrateEntry(raw: any): LogEntry {

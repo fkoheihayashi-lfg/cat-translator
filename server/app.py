@@ -14,8 +14,16 @@ from flask import Flask, jsonify, request
 YAMNET_HANDLE = "https://tfhub.dev/google/yamnet/1"
 CLASS_MAP_CSV = "https://storage.googleapis.com/audioset/yamnet/yamnet_class_map.csv"
 TARGET_SAMPLE_RATE = 16000
+PORT = 5001
+HEALTH_PATH = "/health"
+ANALYZE_PATH = "/analyze-audio"
+REQUEST_AUDIO_FIELD = "audio"
+MAX_UPLOAD_MB = 12
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
+
+# Keep this contract aligned with `src/config/audioAnalysis.ts`.
 
 
 def clamp01(value: float) -> float:
@@ -108,6 +116,20 @@ class YAMNetBridge:
 yamnet_bridge = YAMNetBridge()
 
 
+def health_payload() -> dict[str, Any]:
+    return {
+        "ok": True,
+        "source": "yamnet_server",
+        "service": "yamnet_server",
+        "health": "ok",
+        "port": PORT,
+        "analysisEndpoint": ANALYZE_PATH,
+        "requestField": REQUEST_AUDIO_FIELD,
+        "modelLoaded": yamnet_bridge._model is not None,
+        "loadError": yamnet_bridge._load_error,
+    }
+
+
 def load_audio_waveform(file_path: str) -> np.ndarray:
     waveform, _ = librosa.load(file_path, sr=TARGET_SAMPLE_RATE, mono=True)
     if waveform.size == 0:
@@ -142,16 +164,26 @@ def build_response(signals: YAMNetSignals) -> dict[str, Any]:
     }
 
 
-@app.get("/health")
+@app.get(HEALTH_PATH)
 def health() -> Any:
-    return jsonify({"ok": True, "service": "yamnet_server"})
+    return jsonify(health_payload())
 
 
-@app.post("/analyze-audio")
+@app.post(ANALYZE_PATH)
 def analyze_audio() -> Any:
-    audio = request.files.get("audio")
+    audio = request.files.get(REQUEST_AUDIO_FIELD)
     if audio is None:
-        return jsonify({"ok": False, "error": "missing audio file"}), 400
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "source": "yamnet_server",
+                    "error": f"missing file field: {REQUEST_AUDIO_FIELD}",
+                    "notes": ["Send multipart/form-data with the field name 'audio'."],
+                }
+            ),
+            400,
+        )
 
     suffix = os.path.splitext(audio.filename or "")[1] or ".wav"
     temp_path = None
@@ -185,4 +217,6 @@ def analyze_audio() -> Any:
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    app.logger.info("Starting YAMNet bridge on http://0.0.0.0:%s", PORT)
+    app.logger.info("Health: GET %s | Analyze: POST %s", HEALTH_PATH, ANALYZE_PATH)
+    app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)

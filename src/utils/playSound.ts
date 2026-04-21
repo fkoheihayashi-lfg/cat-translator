@@ -1,4 +1,5 @@
 import { Audio } from 'expo-av';
+import { recordingFileExists } from './recordingStorage';
 
 // Central asset registry — require() paths must be static string literals for Metro.
 export const SOUND_MAP: Record<string, any> = {
@@ -24,6 +25,12 @@ async function stopActive(): Promise<void> {
 
 export async function playSoundFromUri(uri: string, fallbackKey?: string): Promise<boolean> {
   try {
+    const exists = await recordingFileExists(uri);
+    if (!exists) {
+      if (fallbackKey) await playSound(fallbackKey);
+      return false;
+    }
+
     await stopActive();
     const { sound } = await Audio.Sound.createAsync({ uri });
     activeSound = sound;
@@ -39,6 +46,18 @@ export async function playSoundFromUri(uri: string, fallbackKey?: string): Promi
     if (fallbackKey) await playSound(fallbackKey);
     return false;
   }
+}
+
+export async function playLoggedCatSound(
+  recordingUri: string | undefined,
+  fallbackSoundKey: string
+): Promise<boolean> {
+  if (recordingUri) {
+    return playSoundFromUri(recordingUri, fallbackSoundKey);
+  }
+
+  await playSound(fallbackSoundKey);
+  return false;
 }
 
 export async function playSound(soundKey: string): Promise<void> {
