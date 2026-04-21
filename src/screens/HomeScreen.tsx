@@ -10,6 +10,17 @@ type Props = {
 
 export default function HomeScreen({ navigation }: Props) {
   const { profile, log } = useCat();
+  const latestLog = log.length > 0 ? log[log.length - 1] : null;
+  const statusText = profile.name
+    ? `◆ ${profile.name} との通信中`
+    : '◆ CAT PROFILE NOT LOADED';
+  const logSummaryText =
+    log.length > 0 ? `会話ログ ${log.length} 件` : '会話ログ まだありません';
+  const latestHint = latestLog
+    ? latestLog.direction === 'cat_to_human'
+      ? `最新: ${latestLog.catSubtitle}  ${latestLog.translatedText}`
+      : `最新: あなた → 猫  ${latestLog.translatedText}`
+    : null;
 
   const blink = useRef(new Animated.Value(1)).current;
 
@@ -72,12 +83,19 @@ export default function HomeScreen({ navigation }: Props) {
         </TouchableOpacity>
       </View>
 
-      <Text style={[styles.footer, profile.name ? styles.footerActive : undefined]}>
-        {profile.name ? `◆ ${profile.name} との通信中` : '◆ NO CAT DATA LOADED'}
-      </Text>
-      {log.length > 0 && (
-        <Text style={styles.logCount}>会話 {log.length} 件</Text>
-      )}
+      <View style={styles.statusBlock}>
+        <Text style={[styles.footer, profile.name ? styles.footerActive : undefined]}>
+          {statusText}
+        </Text>
+        <Text style={[styles.logCount, log.length === 0 ? styles.logCountMuted : undefined]}>
+          {logSummaryText}
+        </Text>
+        {latestHint && (
+          <Text style={styles.lastHint} numberOfLines={1}>
+            {latestHint}
+          </Text>
+        )}
+      </View>
     </View>
   );
 }
@@ -141,6 +159,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
   },
+  statusBlock: {
+    alignItems: 'center',
+    marginTop: 40,
+    minHeight: 40,
+  },
   secondaryButton: {
     width: 240,
     paddingVertical: 10,
@@ -160,7 +183,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 2,
     fontFamily: 'monospace',
-    marginTop: 40,
   },
   footerActive: {
     color: '#a0e0c0',
@@ -168,6 +190,17 @@ const styles = StyleSheet.create({
   logCount: {
     color: '#666666',
     fontSize: 10,
-    marginTop: 4,
+    marginTop: 6,
+    letterSpacing: 1,
+  },
+  logCountMuted: {
+    color: '#4c4c58',
+  },
+  lastHint: {
+    color: '#59596b',
+    fontSize: 10,
+    marginTop: 6,
+    maxWidth: 240,
+    textAlign: 'center',
   },
 });

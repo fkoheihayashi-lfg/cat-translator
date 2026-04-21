@@ -11,53 +11,17 @@ import {
   View,
 } from 'react-native';
 import { RootStackParamList } from '../../App';
-import { CatAvatarProps } from '../components/CatAvatar';
 import CatAvatar from '../components/CatAvatar';
 import { useCat } from '../context/CatContext';
+import {
+  analyzeCatAudio,
+  CatInterpretation,
+  getAvatarMoodFromInterpretation,
+} from '../logic/analyzeCatAudio';
+import { playSound } from '../utils/playSound';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Translate'>;
-};
-
-type CatResult = {
-  mood: string;
-  catSubtitle: string;
-  translatedText: string;
-};
-
-const MOCK_RESULTS: CatResult[] = [
-  { mood: '甘え', catSubtitle: 'にゃぁ…',  translatedText: 'ねえ、ちょっと構ってほしいんだけど。' },
-  { mood: '要求', catSubtitle: 'にゃー！',  translatedText: 'ごはんのこと、そろそろ思い出してくれた？' },
-  { mood: '不満', catSubtitle: 'むぅにゃ',  translatedText: '今はあんまり触られたい気分じゃないかも。' },
-  { mood: '興味', catSubtitle: 'みゃ？',    translatedText: 'それなに？ちょっと気になる。' },
-  { mood: '安心', catSubtitle: 'ごろ…にゃ', translatedText: 'うん、いまは落ち着いてるよ。' },
-];
-
-const SOUND_MAP: Record<string, any> = {
-  love:    require('../../assets/sounds/nyan_love.wav'),
-  cute:    require('../../assets/sounds/nyan_cute.wav'),
-  food:    require('../../assets/sounds/nyan_food.wav'),
-  play:    require('../../assets/sounds/nyan_play.wav'),
-  sleep:   require('../../assets/sounds/nyan_sleep.mp3'),
-  lonely:  require('../../assets/sounds/nyan_lonely.wav'),
-  no:      require('../../assets/sounds/nyan_no.m4a'),
-  default: require('../../assets/sounds/nyan_default.wav'),
-};
-
-const MOOD_SOUND: Record<string, string> = {
-  '甘え': 'love',
-  '要求': 'food',
-  '不満': 'no',
-  '興味': 'play',
-  '安心': 'sleep',
-};
-
-const MOOD_AVATAR: Record<string, CatAvatarProps['mood']> = {
-  '甘え': 'happy',
-  '要求': 'hungry',
-  '不満': 'upset',
-  '興味': 'curious',
-  '安心': 'sleepy',
 };
 
 const COPY = {
@@ -70,36 +34,20 @@ const COPY = {
 } as const;
 const t = COPY.ja;
 
-async function playSound(soundKey: string): Promise<void> {
-  try {
-    const { sound } = await Audio.Sound.createAsync(
-      SOUND_MAP[soundKey] ?? SOUND_MAP['default']
-    );
-    await sound.playAsync();
-    sound.setOnPlaybackStatusUpdate((status) => {
-      if (status.isLoaded && status.didJustFinish) {
-        sound.unloadAsync();
-      }
-    });
-  } catch (e) {}
-}
-
 type AppState = 'idle' | 'analyzing' | 'result';
 type RecordingState = 'idle' | 'recording';
 
 const BAR_DURATIONS = [280, 340, 220, 380, 260];
 
-function pickRandom(): CatResult {
-  return MOCK_RESULTS[Math.floor(Math.random() * MOCK_RESULTS.length)];
-}
-
 export default function TranslateScreen({ navigation }: Props) {
   const { addLog } = useCat();
   const [appState, setAppState]             = useState<AppState>('idle');
-  const [result, setResult]                 = useState<CatResult | null>(null);
+  const [result, setResult]                 = useState<CatInterpretation | null>(null);
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recording, setRecording]           = useState<Audio.Recording | null>(null);
   const [permissionError, setPermissionError] = useState(false);
+  const analysisTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const actionLockRef = useRef(false);
 
   // Pulse animation for REC button
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -119,6 +67,12 @@ export default function TranslateScreen({ navigation }: Props) {
       allowsRecordingIOS: false,
       staysActiveInBackground: false,
     });
+
+    return () => {
+      if (analysisTimeoutRef.current) {
+        clearTimeout(analysisTimeoutRef.current);
+      }
+    };
   }, []);
 
   // Pulse + waveform lifecycle
@@ -158,32 +112,64 @@ export default function TranslateScreen({ navigation }: Props) {
   }, [result]);
 
   const handleRecordPress = async () => {
+    if (actionLockRef.current || appState === 'analyzing') return;
+    actionLockRef.current = true;
+
     if (recordingState === 'idle') {
       setPermissionError(false);
-      const { granted } = await Audio.requestPermissionsAsync();
-      if (!granted) {
-        setPermissionError(true);
-        return;
+      try {
+        const { granted } = await Audio.requestPermissionsAsync();
+        if (!granted) {
+          setPermissionError(true);
+          return;
+        }
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+        const { recording: rec } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        );
+        setRecording(rec);
+        setRecordingState('recording');
+      } finally {
+        actionLockRef.current = false;
       }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording: rec } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      setRecording(rec);
-      setRecordingState('recording');
     } else {
-      await recording?.stopAndUnloadAsync();
-      setRecording(null);
-      setRecordingState('idle');
-      setAppState('analyzing');
-      setResult(null);
-      setTimeout(() => {
-        const chosen = pickRandom();
-        setResult(chosen);
-        setAppState('result');
-        addLog({ direction: 'cat_to_human', catSound: chosen.catSubtitle, text: chosen.translatedText });
-        playSound(MOOD_SOUND[chosen.mood] ?? 'default');
-      }, 1500);
+      try {
+        const recordingUri = recording?.getURI() ?? undefined;
+        await recording?.stopAndUnloadAsync();
+        setRecording(null);
+        setRecordingState('idle');
+        setAppState('analyzing');
+        setResult(null);
+        analysisTimeoutRef.current = setTimeout(() => {
+        void (async () => {
+            try {
+              const interpretation = await analyzeCatAudio({ recordingUri });
+              setResult(interpretation);
+              setAppState('result');
+              addLog({
+                direction:     'cat_to_human',
+                rawText:       interpretation.catSubtitle,
+                translatedText: interpretation.translatedText,
+                catSubtitle:   interpretation.catSubtitle,
+                soundKey:      interpretation.soundKey,
+                mood:          interpretation.mood,
+                source:        interpretation.source,
+                inputMode:     interpretation.inputMode,
+              });
+              playSound(interpretation.soundKey);
+            } finally {
+              actionLockRef.current = false;
+              analysisTimeoutRef.current = null;
+            }
+          })();
+        }, 1500);
+      } catch {
+        actionLockRef.current = false;
+        setRecording(null);
+        setRecordingState('idle');
+        setAppState('idle');
+        setResult(null);
+      }
     }
   };
 
@@ -212,12 +198,12 @@ export default function TranslateScreen({ navigation }: Props) {
       {appState === 'result' && result && (
         <>
           <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
-            <CatAvatar mood={MOOD_AVATAR[result.mood] ?? 'neutral'} size="large" />
+            <CatAvatar mood={getAvatarMoodFromInterpretation(result)} size="large" />
             <Text style={styles.moodBadge}>{result.mood}</Text>
             <Text style={styles.catSubtitle}>{result.catSubtitle}</Text>
             <Text style={styles.translatedText}>{result.translatedText}</Text>
             <TouchableOpacity
-              onPress={() => playSound(MOOD_SOUND[result.mood] ?? 'default')}
+              onPress={() => playSound(result.soundKey)}
               activeOpacity={0.75}
             >
               <Text style={styles.replayText}>▶ もう一度再生</Text>
@@ -248,6 +234,7 @@ export default function TranslateScreen({ navigation }: Props) {
               style={[styles.recButton, recordingState === 'recording' && styles.recButtonActive]}
               onPress={handleRecordPress}
               activeOpacity={0.75}
+              disabled={actionLockRef.current}
             >
               <Text style={[styles.recButtonText, recordingState === 'recording' && styles.recButtonTextActive]}>
                 {recordingState === 'recording' ? '■ STOP' : '● REC'}

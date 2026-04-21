@@ -14,77 +14,16 @@ import {
   View,
 } from 'react-native';
 import { RootStackParamList } from '../../App';
-import { CatAvatarProps } from '../components/CatAvatar';
 import CatAvatar from '../components/CatAvatar';
 import { useCat } from '../context/CatContext';
-
-const SOUND_MAP: Record<string, any> = {
-  love:    require('../../assets/sounds/nyan_love.wav'),
-  cute:    require('../../assets/sounds/nyan_cute.wav'),
-  food:    require('../../assets/sounds/nyan_food.wav'),
-  play:    require('../../assets/sounds/nyan_play.wav'),
-  sleep:   require('../../assets/sounds/nyan_sleep.mp3'),
-  lonely:  require('../../assets/sounds/nyan_lonely.wav'),
-  no:      require('../../assets/sounds/nyan_no.m4a'),
-  default: require('../../assets/sounds/nyan_default.wav'),
-};
-
-const SOUND_AVATAR: Record<string, CatAvatarProps['mood']> = {
-  love:    'happy',
-  cute:    'happy',
-  food:    'hungry',
-  play:    'curious',
-  sleep:   'sleepy',
-  lonely:  'upset',
-  no:      'upset',
-  default: 'neutral',
-};
-
-async function playSound(soundKey: string): Promise<void> {
-  try {
-    const { sound } = await Audio.Sound.createAsync(
-      SOUND_MAP[soundKey] ?? SOUND_MAP['default']
-    );
-    await sound.playAsync();
-    sound.setOnPlaybackStatusUpdate((status) => {
-      if (status.isLoaded && status.didJustFinish) {
-        sound.unloadAsync();
-      }
-    });
-  } catch (e) {
-    // silently ignore playback errors
-  }
-}
+import { CatReply, generateCatReply, SOUND_AVATAR } from '../logic/generateCatReply';
+import { playSound } from '../utils/playSound';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Speak'>;
 };
 
 type UiState = 'idle' | 'loading' | 'result';
-
-type CatReply = {
-  catSound: string;
-  responseText: string;
-  soundKey: string;
-};
-
-function getLocalCatResponse(input: string): CatReply {
-  if (/好き|大好き|愛してる/.test(input))
-    return { catSound: 'にゃぁ…♡', responseText: '…うれしいにゃ。もっと言ってほしいにゃ。', soundKey: 'love' };
-  if (/かわいい|きれい/.test(input))
-    return { catSound: 'ふにゃ', responseText: 'わかってるにゃ。でも、もっと言うにゃ。', soundKey: 'cute' };
-  if (/ごはん|ご飯|食べ|おなか/.test(input))
-    return { catSound: 'にゃーっ！', responseText: 'はやくするにゃ！待ってるにゃ！', soundKey: 'food' };
-  if (/遊|あそ|遊ぼ/.test(input))
-    return { catSound: 'みゃっ！', responseText: 'いいにゃ！今すぐ来るにゃ！', soundKey: 'play' };
-  if (/ねむ|眠|寝よ|おやすみ/.test(input))
-    return { catSound: 'ごろ…にゃ', responseText: '…いっしょに寝るにゃ。あったかいにゃ。', soundKey: 'sleep' };
-  if (/どこ|いない|さびし|寂し/.test(input))
-    return { catSound: 'にゃ…？', responseText: 'ちゃんとここにいるにゃ。心配しなくていいにゃ。', soundKey: 'lonely' };
-  if (/だめ|ダメ|やめ|こら/.test(input))
-    return { catSound: 'むにゃ', responseText: '…別にいいじゃないにゃ。', soundKey: 'no' };
-  return { catSound: 'にゃ', responseText: '…なんか言ってるにゃ。よくわからないにゃ。', soundKey: 'default' };
-}
 
 export default function SpeakScreen({ navigation }: Props) {
   const { addLog } = useCat();
@@ -93,6 +32,8 @@ export default function SpeakScreen({ navigation }: Props) {
   const [result, setResult] = useState<CatReply | null>(null);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const sendTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isSubmittingRef = useRef(false);
 
   useEffect(() => {
     Audio.setAudioModeAsync({
@@ -100,6 +41,12 @@ export default function SpeakScreen({ navigation }: Props) {
       allowsRecordingIOS: false,
       staysActiveInBackground: false,
     });
+
+    return () => {
+      if (sendTimeoutRef.current) {
+        clearTimeout(sendTimeoutRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -112,19 +59,37 @@ export default function SpeakScreen({ navigation }: Props) {
   const canSend = inputText.trim().length > 0;
 
   const handleSend = () => {
-    if (!canSend) return;
+    if (!canSend || uiState === 'loading' || isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setUiState('loading');
     setResult(null);
-    setTimeout(() => {
-      const res = getLocalCatResponse(inputText.trim());
-      setResult(res);
-      setUiState('result');
-      playSound(res.soundKey);
-      addLog({ direction: 'human_to_cat', catSound: res.catSound, text: res.responseText });
+    sendTimeoutRef.current = setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await generateCatReply({ text: inputText.trim() });
+          setResult(res);
+          setUiState('result');
+          playSound(res.soundKey);
+          addLog({
+            direction:     'human_to_cat',
+            rawText:       res.catSound,
+            translatedText: res.responseText,
+            catSubtitle:   res.catSound,
+            soundKey:      res.soundKey,
+            mood:          res.mood,
+            source:        'mock',
+            inputMode:     'text',
+          });
+        } finally {
+          isSubmittingRef.current = false;
+          sendTimeoutRef.current = null;
+        }
+      })();
     }, 1000);
   };
 
   const handleReset = () => {
+    if (uiState === 'loading') return;
     setUiState('idle');
     setResult(null);
   };
