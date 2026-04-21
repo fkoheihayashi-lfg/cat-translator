@@ -1,4 +1,11 @@
 import { CatAvatarProps } from '../components/CatAvatar';
+import {
+  CatPersonaState,
+  CatProfileLike,
+  createSeed,
+  InteractionTheme,
+  LogEntryLike,
+} from './catPersona';
 
 // Keep SpeakScreen calling only generateCatReply().
 // Swap the implementation inside that entry point when wiring in Claude later.
@@ -12,9 +19,10 @@ export type CatReply = {
 
 export type GenerateCatReplyInput = {
   text: string;
+  profile?: CatProfileLike;
+  personaState?: CatPersonaState;
+  log?: LogEntryLike[];
 };
-
-type CatReplyGenerator = (input: GenerateCatReplyInput) => Promise<CatReply>;
 
 export const SOUND_AVATAR: Record<string, CatAvatarProps['mood']> = {
   love:    'happy',
@@ -32,13 +40,10 @@ export const SOUND_AVATAR: Record<string, CatAvatarProps['mood']> = {
 type Variant = Omit<CatReply, never>;
 
 type Category = {
+  theme: InteractionTheme;
   pattern: RegExp;
   variants: Variant[];
 };
-
-function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
 
 // ─── Response table ───────────────────────────────────────────────────────────
 // Each category has 3–4 variants so repeated inputs feel less robotic.
@@ -46,6 +51,7 @@ function pick<T>(arr: T[]): T {
 
 const CATEGORIES: Category[] = [
   {
+    theme: 'affection',
     pattern: /好き|大好き|愛してる/,
     variants: [
       { catSound: 'にゃぁ…♡',  responseText: '…うれしいにゃ。もっと言ってほしいにゃ。',    soundKey: 'love', mood: '甘え' },
@@ -55,6 +61,7 @@ const CATEGORIES: Category[] = [
     ],
   },
   {
+    theme: 'affection',
     pattern: /かわいい|きれい|美人/,
     variants: [
       { catSound: 'ふにゃ',    responseText: 'わかってるにゃ。でも、もっと言うにゃ。',     soundKey: 'cute', mood: '甘え' },
@@ -63,6 +70,7 @@ const CATEGORIES: Category[] = [
     ],
   },
   {
+    theme: 'affection',
     pattern: /えらい|すごい|じょうず|上手|天才/,
     variants: [
       { catSound: 'にゃ…？',   responseText: 'そうにゃ。わかればいいにゃ。',             soundKey: 'cute', mood: '甘え' },
@@ -71,6 +79,7 @@ const CATEGORIES: Category[] = [
     ],
   },
   {
+    theme: 'food',
     pattern: /ごはん|ご飯|食べ|おなか|めし|えさ|フード/,
     variants: [
       { catSound: 'にゃーっ！',  responseText: 'はやくするにゃ！待ってるにゃ！',            soundKey: 'food', mood: '要求' },
@@ -80,6 +89,7 @@ const CATEGORIES: Category[] = [
     ],
   },
   {
+    theme: 'food',
     pattern: /おやつ|ちゅーる|おいし/,
     variants: [
       { catSound: 'にゃぁっ！',  responseText: 'それにゃ！それがほしいにゃ！',             soundKey: 'food', mood: '要求' },
@@ -88,6 +98,7 @@ const CATEGORIES: Category[] = [
     ],
   },
   {
+    theme: 'play',
     pattern: /遊|あそ|遊ぼ|ぼーる|ねこじゃらし/,
     variants: [
       { catSound: 'みゃっ！',   responseText: 'いいにゃ！今すぐ来るにゃ！',              soundKey: 'play', mood: '興味' },
@@ -97,6 +108,7 @@ const CATEGORIES: Category[] = [
     ],
   },
   {
+    theme: 'comfort',
     pattern: /なで|もふ|さわ|タッチ|ふれ|触/,
     variants: [
       { catSound: 'ごろごろ…',  responseText: 'そこそこにゃ…。きもちいいにゃ。',          soundKey: 'cute', mood: '安心' },
@@ -106,6 +118,7 @@ const CATEGORIES: Category[] = [
     ],
   },
   {
+    theme: 'rest',
     pattern: /ねむ|眠|寝よ|おやすみ|ねんね/,
     variants: [
       { catSound: 'ごろ…にゃ',  responseText: '…いっしょに寝るにゃ。あったかいにゃ。',     soundKey: 'sleep', mood: '安心' },
@@ -115,6 +128,7 @@ const CATEGORIES: Category[] = [
     ],
   },
   {
+    theme: 'comfort',
     pattern: /どこ|いない|さびし|寂し|ひとり/,
     variants: [
       { catSound: 'にゃ…？',   responseText: 'ちゃんとここにいるにゃ。心配しなくていいにゃ。', soundKey: 'lonely', mood: '甘え' },
@@ -123,6 +137,7 @@ const CATEGORIES: Category[] = [
     ],
   },
   {
+    theme: 'discipline',
     pattern: /だめ|ダメ|やめ|こら|いけない|怒/,
     variants: [
       { catSound: 'むにゃ',    responseText: '…別にいいじゃないにゃ。',                 soundKey: 'no', mood: '不満' },
@@ -140,24 +155,149 @@ const DEFAULT_VARIANTS: Variant[] = [
   { catSound: 'にゃ？',   responseText: 'どういうことにゃ？',                   soundKey: 'default', mood: '' },
 ];
 
-function generateCatReplyFromTemplate(input: string): CatReply {
-  for (const category of CATEGORIES) {
-    if (category.pattern.test(input)) {
-      return pick(category.variants);
-    }
-  }
-  return pick(DEFAULT_VARIANTS);
-}
-
-const localCatReplyGenerator: CatReplyGenerator = async ({ text }) => {
-  return generateCatReplyFromTemplate(text);
+const PERSONALITY_MEMORY_LINES: Record<
+  CatPersonaState['personalityTone'],
+  Record<string, string[]>
+> = {
+  clingy: {
+    default: ['もっと近くにいてほしいにゃ。', 'ちゃんと聞いてくれるとうれしいにゃ。'],
+    affection: ['最近はすぐ甘えたくなるにゃ。'],
+    comfort: ['このやり取り、かなり安心するにゃ。'],
+    food: ['その話を聞くと、すぐ期待しちゃうにゃ。'],
+  },
+  steady: {
+    default: ['この感じ、だいぶ慣れてきたにゃ。', 'いつもの流れって感じにゃ。'],
+    rest: ['落ち着く時間だって覚えてるにゃ。'],
+    comfort: ['ここだと安心していられるにゃ。'],
+  },
+  reserved: {
+    default: ['…悪くないにゃ。', 'それなら聞いてあげるにゃ。'],
+    affection: ['…今日は少しだけ近くにいてもいいにゃ。'],
+    food: ['その話ならちゃんと反応するにゃ。'],
+    comfort: ['ここなら落ち着けるにゃ。'],
+  },
+  playful: {
+    default: ['次は何が来るにゃ？', 'ちょっと気分が乗ってきたにゃ。'],
+    play: ['また遊ぶ流れかと思ったにゃ。'],
+    curiosity: ['最近は気になるものが増えたにゃ。'],
+    affection: ['うれしいと、つい動きたくなるにゃ。'],
+  },
 };
 
+function getCategory(text: string): { theme: InteractionTheme; variants: Variant[] } {
+  for (const category of CATEGORIES) {
+    if (category.pattern.test(text)) {
+      return { theme: category.theme, variants: category.variants };
+    }
+  }
+  return { theme: 'general', variants: DEFAULT_VARIANTS };
+}
+
+function scoreVariant(
+  variant: Variant,
+  theme: InteractionTheme,
+  input: GenerateCatReplyInput,
+  seed: number
+): number {
+  const personaState = input.personaState;
+  const personalityTone = personaState?.personalityTone ?? 'steady';
+  let score = (createSeed(seed, variant.responseText, variant.catSound) % 13) + 1;
+  const length = variant.responseText.length;
+
+  if (personalityTone === 'clingy' && (theme === 'affection' || theme === 'comfort')) {
+    score += length;
+  }
+  if (personalityTone === 'reserved') {
+    score += 26 - Math.min(length, 26);
+    if (variant.responseText.includes('もっと') || variant.catSound.includes('♡')) score -= 5;
+  }
+  if (personalityTone === 'playful' && (theme === 'play' || theme === 'curiosity')) {
+    score += variant.responseText.includes('！') ? 8 : 4;
+  }
+  if (personalityTone === 'steady') {
+    score += 10 - Math.abs(length - 16);
+  }
+  if (personaState?.favoriteTopic === theme) {
+    score += 5;
+  }
+  if (personaState?.dominantTheme === theme) {
+    score += 3;
+  }
+  if (personaState?.relationshipStage === 'attached' && theme === 'affection') {
+    score += 4;
+  }
+  if (personaState?.recentDirectionTrend === 'human_led' && theme === 'comfort') {
+    score += 2;
+  }
+  if (personaState?.dominantRecentThemes.includes(theme)) {
+    score += 2;
+  }
+
+  return score;
+}
+
+function buildPersonalizedTail(
+  theme: InteractionTheme,
+  input: GenerateCatReplyInput,
+  seed: number
+): string {
+  const personaState = input.personaState;
+  if (!personaState || personaState.interactionCount === 0) return '';
+
+  const pool = PERSONALITY_MEMORY_LINES[personaState.personalityTone];
+  const shouldUseThemeLine =
+    personaState.favoriteTopic === theme ||
+    personaState.topicCounts[theme] >= 3 ||
+    (theme !== 'general' && personaState.dominantTheme === theme);
+
+  const candidates =
+    (shouldUseThemeLine ? pool[theme] : undefined) ??
+    (personaState.relationshipStage !== 'new' ? pool.default : undefined);
+
+  if (!candidates || candidates.length === 0) return '';
+  const picked = candidates[seed % candidates.length];
+
+  if (personaState.recentDirectionTrend === 'human_led' && theme === 'comfort') {
+    return picked.includes('安心')
+      ? picked
+      : `${picked} ちゃんと見てるにゃ。`;
+  }
+
+  return picked;
+}
+
+function appendTail(base: string, tail: string): string {
+  if (!tail || base.includes(tail)) return base;
+  return `${base} ${tail}`;
+}
+
+function generateCatReplyFromTemplate(input: GenerateCatReplyInput): CatReply {
+  const category = getCategory(input.text);
+  const personaState = input.personaState;
+  const seed = createSeed(
+    input.text,
+    personaState?.interactionCount ?? 0,
+    personaState?.dominantTheme ?? 'general',
+    input.profile?.personality ?? 'default'
+  );
+  const chosen = category.variants.reduce((best, variant) => {
+    const bestScore = scoreVariant(best, category.theme, input, seed);
+    const currentScore = scoreVariant(variant, category.theme, input, seed);
+    return currentScore > bestScore ? variant : best;
+  }, category.variants[0]);
+  const tail = buildPersonalizedTail(category.theme, input, seed);
+
+  return {
+    ...chosen,
+    responseText: appendTail(chosen.responseText, tail),
+  };
+}
+
 // Future swap point:
-// Replace localCatReplyGenerator with a Claude-backed implementation while
-// keeping SpeakScreen and the CatReply shape unchanged.
+// Replace the internals of generateCatReply() with a Claude-backed
+// implementation while keeping SpeakScreen and the CatReply shape unchanged.
 export async function generateCatReply(input: GenerateCatReplyInput): Promise<CatReply> {
-  return localCatReplyGenerator(input);
+  return generateCatReplyFromTemplate(input);
 }
 
 export { generateCatReplyFromTemplate };

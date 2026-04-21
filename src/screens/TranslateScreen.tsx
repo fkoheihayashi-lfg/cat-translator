@@ -14,10 +14,13 @@ import { RootStackParamList } from '../../App';
 import CatAvatar from '../components/CatAvatar';
 import { useCat } from '../context/CatContext';
 import {
-  analyzeCatAudio,
   CatInterpretation,
   getAvatarMoodFromInterpretation,
 } from '../logic/analyzeCatAudio';
+import {
+  runCatAudioAnalysisTransaction,
+  startCatRecordingSession,
+} from '../logic/textConversation';
 import { playSound } from '../utils/playSound';
 
 type Props = {
@@ -40,14 +43,14 @@ type RecordingState = 'idle' | 'recording';
 const BAR_DURATIONS = [280, 340, 220, 380, 260];
 
 export default function TranslateScreen({ navigation }: Props) {
-  const { addLog } = useCat();
+  const { profile, personaState, addLog } = useCat();
   const [appState, setAppState]             = useState<AppState>('idle');
   const [result, setResult]                 = useState<CatInterpretation | null>(null);
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recording, setRecording]           = useState<Audio.Recording | null>(null);
   const [permissionError, setPermissionError] = useState(false);
-  const analysisTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const actionLockRef = useRef(false);
+  const recordingAbortRef = useRef<AbortController | null>(null);
 
   // Pulse animation for REC button
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -69,9 +72,7 @@ export default function TranslateScreen({ navigation }: Props) {
     });
 
     return () => {
-      if (analysisTimeoutRef.current) {
-        clearTimeout(analysisTimeoutRef.current);
-      }
+      recordingAbortRef.current?.abort();
     };
   }, []);
 
@@ -118,57 +119,51 @@ export default function TranslateScreen({ navigation }: Props) {
     if (recordingState === 'idle') {
       setPermissionError(false);
       try {
-        const { granted } = await Audio.requestPermissionsAsync();
-        if (!granted) {
-          setPermissionError(true);
-          return;
-        }
-        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-        const { recording: rec } = await Audio.Recording.createAsync(
-          Audio.RecordingOptionsPresets.HIGH_QUALITY
-        );
-        setRecording(rec);
+        const nextRecording = await startCatRecordingSession({
+          onPermissionDenied: () => {
+            setPermissionError(true);
+          },
+          onPermissionGranted: () => {
+            setPermissionError(false);
+          },
+        });
+        if (!nextRecording) return;
+        setRecording(nextRecording);
         setRecordingState('recording');
       } finally {
         actionLockRef.current = false;
       }
     } else {
       try {
-        const recordingUri = recording?.getURI() ?? undefined;
-        await recording?.stopAndUnloadAsync();
+        recordingAbortRef.current = new AbortController();
         setRecording(null);
         setRecordingState('idle');
-        setAppState('analyzing');
-        setResult(null);
-        analysisTimeoutRef.current = setTimeout(() => {
-        void (async () => {
-            try {
-              const interpretation = await analyzeCatAudio({ recordingUri });
-              setResult(interpretation);
-              setAppState('result');
-              addLog({
-                direction:     'cat_to_human',
-                rawText:       interpretation.catSubtitle,
-                translatedText: interpretation.translatedText,
-                catSubtitle:   interpretation.catSubtitle,
-                soundKey:      interpretation.soundKey,
-                mood:          interpretation.mood,
-                source:        interpretation.source,
-                inputMode:     interpretation.inputMode,
-              });
-              playSound(interpretation.soundKey);
-            } finally {
-              actionLockRef.current = false;
-              analysisTimeoutRef.current = null;
-            }
-          })();
-        }, 1500);
+        await runCatAudioAnalysisTransaction({
+          recording,
+          profile,
+          personaState,
+          addLog,
+          signal: recordingAbortRef.current.signal,
+          onStartAnalysis: () => {
+            setAppState('analyzing');
+            setResult(null);
+          },
+          onInterpretation: (interpretation) => {
+            setResult(interpretation);
+            setAppState('result');
+          },
+          onComplete: () => {
+            actionLockRef.current = false;
+            recordingAbortRef.current = null;
+          },
+        });
       } catch {
         actionLockRef.current = false;
         setRecording(null);
         setRecordingState('idle');
         setAppState('idle');
         setResult(null);
+        recordingAbortRef.current = null;
       }
     }
   };

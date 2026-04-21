@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { buildCatPersonaState, CatPersonaState } from '../logic/catPersona';
 
 export type LogEntry = {
   id: number;
@@ -14,13 +15,14 @@ export type LogEntry = {
   inputMode: 'recording' | 'text';
 };
 
-type CatProfile = {
+export type CatProfile = {
   name: string;
   personality: string;
 };
 
 type CatContextType = {
   profile: CatProfile;
+  personaState: CatPersonaState;
   setProfile: (p: CatProfile) => void;
   log: LogEntry[];
   addLog: (entry: Omit<LogEntry, 'id' | 'createdAt'>) => void;
@@ -66,6 +68,16 @@ function migrateEntry(raw: any): LogEntry {
 
 const CatContext = createContext<CatContextType | null>(null);
 
+function migrateProfile(raw: any): CatProfile {
+  return {
+    name: typeof raw?.name === 'string' ? raw.name : '',
+    personality:
+      typeof raw?.personality === 'string' && raw.personality.length > 0
+        ? raw.personality
+        : DEFAULT_PROFILE.personality,
+  };
+}
+
 export function CatProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfileState] = useState<CatProfile>(DEFAULT_PROFILE);
   const [log, setLog]              = useState<LogEntry[]>([]);
@@ -75,7 +87,7 @@ export function CatProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const [profileRaw, logRaw] = await AsyncStorage.multiGet([KEYS.profile, KEYS.log]);
-        if (profileRaw[1]) setProfileState(JSON.parse(profileRaw[1]));
+        if (profileRaw[1]) setProfileState(migrateProfile(JSON.parse(profileRaw[1])));
         if (logRaw[1])     setLog((JSON.parse(logRaw[1]) as any[]).map(migrateEntry));
       } catch {
         // Corrupt data — fall back to defaults silently
@@ -96,6 +108,7 @@ export function CatProvider({ children }: { children: React.ReactNode }) {
   }, [log, ready]);
 
   const setProfile = (p: CatProfile) => setProfileState(p);
+  const personaState = buildCatPersonaState(profile, log);
 
   const addLog = (entry: Omit<LogEntry, 'id' | 'createdAt'>) => {
     const now = Date.now();
@@ -105,7 +118,7 @@ export function CatProvider({ children }: { children: React.ReactNode }) {
   if (!ready) return null;
 
   return (
-    <CatContext.Provider value={{ profile, setProfile, log, addLog }}>
+    <CatContext.Provider value={{ profile, personaState, setProfile, log, addLog }}>
       {children}
     </CatContext.Provider>
   );

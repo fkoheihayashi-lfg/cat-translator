@@ -1,5 +1,6 @@
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useState } from 'react';
+import { Keyboard } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
 import {
   StatusBar,
   StyleSheet,
@@ -19,14 +20,31 @@ const PERSONALITIES = ['甘えん坊', 'マイペース', '好奇心旺盛', '�
 
 export default function ProfileScreen({ navigation }: Props) {
   const { profile, setProfile } = useCat();
-  const [catName, setCatName]       = useState(profile.name);
+  const [catName, setCatName] = useState(profile.name);
   const [personality, setPersonality] = useState(profile.personality);
-  const [saved, setSaved]           = useState(false);
+  const [saved, setSaved] = useState(false);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isSavingRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleSave = () => {
+    if (isSavingRef.current) return;
+    isSavingRef.current = true;
+    Keyboard.dismiss();
     setProfile({ name: catName, personality });
     setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    saveTimeoutRef.current = setTimeout(() => {
+      setSaved(false);
+      isSavingRef.current = false;
+      navigation.goBack();
+    }, 900);
   };
 
   return (
@@ -77,7 +95,12 @@ export default function ProfileScreen({ navigation }: Props) {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={[styles.saveButton, saved && styles.saveButtonDisabled]}
+          onPress={handleSave}
+          activeOpacity={0.8}
+          disabled={saved}
+        >
           <Text style={styles.saveButtonText}>保存する</Text>
         </TouchableOpacity>
 
@@ -177,6 +200,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
+  },
+  saveButtonDisabled: {
+    opacity: 0.7,
   },
   saveButtonText: {
     color: '#0e0e14',

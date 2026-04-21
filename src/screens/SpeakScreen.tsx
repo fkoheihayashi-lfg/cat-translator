@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   StatusBar,
@@ -16,7 +17,8 @@ import {
 import { RootStackParamList } from '../../App';
 import CatAvatar from '../components/CatAvatar';
 import { useCat } from '../context/CatContext';
-import { CatReply, generateCatReply, SOUND_AVATAR } from '../logic/generateCatReply';
+import { CatReply, SOUND_AVATAR } from '../logic/generateCatReply';
+import { runHumanToCatTextTransaction } from '../logic/textConversation';
 import { playSound } from '../utils/playSound';
 
 type Props = {
@@ -26,7 +28,7 @@ type Props = {
 type UiState = 'idle' | 'loading' | 'result';
 
 export default function SpeakScreen({ navigation }: Props) {
-  const { addLog } = useCat();
+  const { profile, personaState, log, addLog } = useCat();
   const [inputText, setInputText] = useState('');
   const [uiState, setUiState] = useState<UiState>('idle');
   const [result, setResult] = useState<CatReply | null>(null);
@@ -66,32 +68,30 @@ export default function SpeakScreen({ navigation }: Props) {
     sendTimeoutRef.current = setTimeout(() => {
       void (async () => {
         try {
-          const res = await generateCatReply({ text: inputText.trim() });
-          setResult(res);
-          setUiState('result');
-          playSound(res.soundKey);
-          addLog({
-            direction:     'human_to_cat',
-            rawText:       res.catSound,
-            translatedText: res.responseText,
-            catSubtitle:   res.catSound,
-            soundKey:      res.soundKey,
-            mood:          res.mood,
-            source:        'mock',
-            inputMode:     'text',
+          await runHumanToCatTextTransaction({
+            text: inputText.trim(),
+            profile,
+            personaState,
+            log,
+            addLog,
+            dismissKeyboard: Keyboard.dismiss,
+            onReply: (reply) => {
+              setResult(reply);
+              setUiState('result');
+            },
+            onComplete: () => {
+              isSubmittingRef.current = false;
+              sendTimeoutRef.current = null;
+            },
           });
         } finally {
-          isSubmittingRef.current = false;
-          sendTimeoutRef.current = null;
+          if (isSubmittingRef.current) {
+            isSubmittingRef.current = false;
+            sendTimeoutRef.current = null;
+          }
         }
       })();
     }, 1000);
-  };
-
-  const handleReset = () => {
-    if (uiState === 'loading') return;
-    setUiState('idle');
-    setResult(null);
   };
 
   return (
@@ -111,31 +111,35 @@ export default function SpeakScreen({ navigation }: Props) {
           <Text style={styles.subtitle}>猫に伝えたいことを入力してください</Text>
         </View>
 
-        <TextInput
-          style={styles.input}
-          value={inputText}
-          onChangeText={setInputText}
-          placeholder="例：大好きだよ、かわいいね"
-          placeholderTextColor="#4a4a66"
-          multiline
-          numberOfLines={3}
-          maxLength={200}
-          textAlignVertical="top"
-          editable={uiState !== 'loading'}
-        />
-
-        {uiState !== 'result' && (
+        <View style={styles.composer}>
+          <TextInput
+            style={styles.input}
+            value={inputText}
+            onChangeText={setInputText}
+            placeholder="例：大好きだよ、かわいいね"
+            placeholderTextColor="#4a4a66"
+            multiline
+            numberOfLines={3}
+            maxLength={200}
+            textAlignVertical="top"
+            editable={uiState !== 'loading'}
+          />
           <TouchableOpacity
-            style={[styles.button, (!canSend || uiState === 'loading') && styles.buttonDisabled]}
+            style={[styles.sendButton, (!canSend || uiState === 'loading') && styles.sendButtonDisabled]}
             onPress={handleSend}
             activeOpacity={0.75}
             disabled={!canSend || uiState === 'loading'}
           >
-            <Text style={[styles.buttonText, (!canSend || uiState === 'loading') && styles.buttonTextDisabled]}>
-              猫語に変換する
+            <Text
+              style={[
+                styles.sendButtonText,
+                (!canSend || uiState === 'loading') && styles.sendButtonTextDisabled,
+              ]}
+            >
+              送信
             </Text>
           </TouchableOpacity>
-        )}
+        </View>
 
         {uiState === 'loading' && (
           <View style={styles.card}>
@@ -145,20 +149,15 @@ export default function SpeakScreen({ navigation }: Props) {
         )}
 
         {uiState === 'result' && result && (
-          <>
-            <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
-              <CatAvatar mood={SOUND_AVATAR[result.soundKey] ?? 'neutral'} size="large" />
-              <Text style={styles.moodBadge}>猫語</Text>
-              <Text style={styles.catSound}>{result.catSound}</Text>
-              <Text style={styles.translatedText}>{result.responseText}</Text>
-              <TouchableOpacity onPress={() => playSound(result.soundKey)} activeOpacity={0.75}>
-                <Text style={styles.replayText}>▶ もう一度再生</Text>
-              </TouchableOpacity>
-            </Animated.View>
-            <TouchableOpacity style={styles.buttonRepeat} onPress={handleReset} activeOpacity={0.75}>
-              <Text style={styles.buttonRepeatText}>もう一度話しかける</Text>
+          <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
+            <CatAvatar mood={SOUND_AVATAR[result.soundKey] ?? 'neutral'} size="large" />
+            <Text style={styles.moodBadge}>猫語</Text>
+            <Text style={styles.catSound}>{result.catSound}</Text>
+            <Text style={styles.translatedText}>{result.responseText}</Text>
+            <TouchableOpacity onPress={() => playSound(result.soundKey)} activeOpacity={0.75}>
+              <Text style={styles.replayText}>▶ もう一度再生</Text>
             </TouchableOpacity>
-          </>
+          </Animated.View>
         )}
       </View>
     </KeyboardAvoidingView>
@@ -188,6 +187,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     gap: 24,
   },
+  composer: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 12,
+  },
   header: {
     alignItems: 'center',
     gap: 8,
@@ -204,7 +209,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   input: {
-    width: '100%',
+    flex: 1,
     backgroundColor: '#1a1a24',
     borderWidth: 1,
     borderColor: '#a0e0c0',
@@ -215,24 +220,28 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     minHeight: 90,
   },
-  button: {
-    backgroundColor: '#a0e0c0',
-    paddingVertical: 14,
-    paddingHorizontal: 40,
-    borderRadius: 40,
-  },
-  buttonDisabled: {
+  sendButton: {
     backgroundColor: '#1a1a24',
+    borderWidth: 1,
+    borderColor: '#a0e0c0',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderRadius: 14,
+    minHeight: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendButtonDisabled: {
     borderWidth: 1,
     borderColor: '#2a2a3c',
   },
-  buttonText: {
-    color: '#0e0e14',
-    fontSize: 16,
+  sendButtonText: {
+    color: '#a0e0c0',
+    fontSize: 14,
     fontWeight: '700',
     letterSpacing: 2,
   },
-  buttonTextDisabled: {
+  sendButtonTextDisabled: {
     color: '#4a4a66',
   },
   card: {
@@ -280,18 +289,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 12,
     alignSelf: 'center',
-  },
-  buttonRepeat: {
-    borderWidth: 1,
-    borderColor: '#a0e0c0',
-    paddingVertical: 12,
-    paddingHorizontal: 36,
-    borderRadius: 40,
-  },
-  buttonRepeatText: {
-    color: '#a0e0c0',
-    fontSize: 15,
-    fontWeight: '600',
-    letterSpacing: 2,
   },
 });

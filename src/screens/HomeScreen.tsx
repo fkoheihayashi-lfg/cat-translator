@@ -3,24 +3,28 @@ import { useEffect, useRef } from 'react';
 import { Animated, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { RootStackParamList } from '../../App';
 import { useCat } from '../context/CatContext';
+import {
+  getHomeLogSummaryText,
+  getHomeStatusText,
+} from '../logic/statusText';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList>;
 };
 
 export default function HomeScreen({ navigation }: Props) {
-  const { profile, log } = useCat();
+  const { profile, personaState, log } = useCat();
   const latestLog = log.length > 0 ? log[log.length - 1] : null;
-  const statusText = profile.name
-    ? `◆ ${profile.name} との通信中`
-    : '◆ CAT PROFILE NOT LOADED';
-  const logSummaryText =
-    log.length > 0 ? `会話ログ ${log.length} 件` : '会話ログ まだありません';
+  const statusText = getHomeStatusText(profile.name, personaState);
+  const logSummaryText = getHomeLogSummaryText(
+    log.length,
+    personaState.communicationHint
+  );
   const latestHint = latestLog
     ? latestLog.direction === 'cat_to_human'
-      ? `最新: ${latestLog.catSubtitle}  ${latestLog.translatedText}`
-      : `最新: あなた → 猫  ${latestLog.translatedText}`
-    : null;
+      ? `最新の受信: ${latestLog.translatedText}`
+      : `最新の送信: ${latestLog.translatedText}`
+    : `${personaState.bondHint} · ${personaState.recentThemeSummary}`;
 
   const blink = useRef(new Animated.Value(1)).current;
 
@@ -50,18 +54,19 @@ export default function HomeScreen({ navigation }: Props) {
       <View style={styles.middle}>
         <TouchableOpacity
           style={styles.primaryButton}
+          onPress={() => navigation.navigate('Conversation')}
+          activeOpacity={0.75}
+        >
+          <Text style={styles.primaryButtonText}>会話をはじめる</Text>
+        </TouchableOpacity>
+        <Text style={styles.primaryHint}>継続中の会話スレッドを開きます</Text>
+
+        <TouchableOpacity
+          style={styles.primaryButton}
           onPress={() => navigation.navigate('Translate')}
           activeOpacity={0.75}
         >
           <Text style={styles.primaryButtonText}>聞かせる</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={() => navigation.navigate('Speak')}
-          activeOpacity={0.75}
-        >
-          <Text style={styles.primaryButtonText}>話しかける</Text>
         </TouchableOpacity>
       </View>
 
@@ -90,11 +95,9 @@ export default function HomeScreen({ navigation }: Props) {
         <Text style={[styles.logCount, log.length === 0 ? styles.logCountMuted : undefined]}>
           {logSummaryText}
         </Text>
-        {latestHint && (
-          <Text style={styles.lastHint} numberOfLines={1}>
-            {latestHint}
-          </Text>
-        )}
+        <Text style={styles.lastHint} numberOfLines={2}>
+          {latestHint}
+        </Text>
       </View>
     </View>
   );
@@ -154,6 +157,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: 3,
+  },
+  primaryHint: {
+    color: '#5d5d72',
+    fontSize: 11,
+    letterSpacing: 1,
+    marginTop: -4,
+    marginBottom: 18,
   },
   bottom: {
     alignItems: 'center',
