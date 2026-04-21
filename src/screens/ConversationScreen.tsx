@@ -18,6 +18,13 @@ import {
 import { RootStackParamList } from '../../App';
 import CatAvatar from '../components/CatAvatar';
 import { useCat } from '../context/CatContext';
+import {
+  formatThreadTime,
+  getBondHintText,
+  getMoodLabel,
+  getRecentThemeSummaryText,
+  getStrings,
+} from '../i18n/strings';
 import { getAvatarMoodFromInterpretation } from '../logic/analyzeCatAudio';
 import { SOUND_AVATAR } from '../logic/generateCatReply';
 import {
@@ -29,7 +36,7 @@ import {
   getCommunicationStatusText,
   getConversationThreadStatusText,
 } from '../logic/statusText';
-import { playSound } from '../utils/playSound';
+import { playSound, playSoundFromUri } from '../utils/playSound';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Conversation'>;
@@ -39,13 +46,9 @@ type PendingState = 'idle' | 'text_loading' | 'recording' | 'audio_loading';
 
 const BAR_DURATIONS = [280, 340, 220, 380, 260];
 
-function formatTimestamp(createdAt: number): string {
-  const d = new Date(createdAt);
-  return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-}
-
 export default function ConversationScreen({ navigation }: Props) {
-  const { profile, personaState, log, addLog } = useCat();
+  const { profile, language, personaState, log, addLog } = useCat();
+  const strings = getStrings(language);
   const [inputText, setInputText] = useState('');
   const [pendingState, setPendingState] = useState<PendingState>('idle');
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
@@ -62,11 +65,12 @@ export default function ConversationScreen({ navigation }: Props) {
   const barLoops = useRef<Animated.CompositeAnimation[]>([]);
 
   const canSend = inputText.trim().length > 0;
-  const catName = profile.name || 'NO CAT PROFILE';
-  const statusText = getCommunicationStatusText(profile.name, personaState.bondLabel);
+  const catName = profile.name || strings.conversation.unnamedCat;
+  const statusText = getCommunicationStatusText(profile.name, personaState, language);
   const threadStatus = getConversationThreadStatusText(
     log.length,
-    personaState.communicationHint
+    personaState,
+    language
   );
 
   useEffect(() => {
@@ -130,6 +134,7 @@ export default function ConversationScreen({ navigation }: Props) {
         try {
           await runHumanToCatTextTransaction({
             text: inputText.trim(),
+            language,
             profile,
             personaState,
             log,
@@ -189,6 +194,7 @@ export default function ConversationScreen({ navigation }: Props) {
       setRecording(null);
       await runCatAudioAnalysisTransaction({
         recording,
+        language,
         profile,
         personaState,
         addLog,
@@ -220,7 +226,7 @@ export default function ConversationScreen({ navigation }: Props) {
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
-            <Text style={styles.backText}>← 戻る</Text>
+            <Text style={styles.backText}>{strings.common.back}</Text>
           </TouchableOpacity>
           <Text style={styles.headerSignal}>{threadStatus}</Text>
         </View>
@@ -231,7 +237,7 @@ export default function ConversationScreen({ navigation }: Props) {
             <Text style={styles.headerTitle}>{catName}</Text>
             <Text style={styles.headerStatus}>{statusText}</Text>
             <Text style={styles.headerHint}>
-              {personaState.bondHint} · {personaState.recentThemeSummary}
+              {getBondHintText(personaState, language)} · {getRecentThemeSummaryText(personaState, language)}
             </Text>
           </View>
         </View>
@@ -246,8 +252,8 @@ export default function ConversationScreen({ navigation }: Props) {
       >
         {log.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>通信待機中</Text>
-            <Text style={styles.emptyText}>話しかけるか、猫の声を聞かせてください</Text>
+            <Text style={styles.emptyTitle}>{strings.conversation.emptyTitle}</Text>
+            <Text style={styles.emptyText}>{strings.conversation.emptyText}</Text>
           </View>
         ) : (
           log.map((entry) => {
@@ -274,7 +280,7 @@ export default function ConversationScreen({ navigation }: Props) {
                   <View style={styles.bubbleTop}>
                     {!isHuman && <CatAvatar mood={bubbleMood} size="small" />}
                     <Text style={[styles.roleLabel, isHuman && styles.roleLabelHuman]}>
-                      {isHuman ? 'HUMAN → CAT' : 'CAT → HUMAN'}
+                      {isHuman ? strings.common.humanToCatSystem : strings.common.catToHumanSystem}
                     </Text>
                   </View>
 
@@ -296,18 +302,27 @@ export default function ConversationScreen({ navigation }: Props) {
                   <View style={styles.bubbleMeta}>
                     {entry.mood ? (
                       <Text style={[styles.moodTag, isHuman && styles.moodTagHuman]}>
-                        {entry.mood}
+                        {getMoodLabel(entry.mood, language)}
                       </Text>
                     ) : null}
                     {entry.soundKey ? (
-                      <TouchableOpacity onPress={() => playSound(entry.soundKey)} activeOpacity={0.75}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          if (!isHuman && entry.recordingUri) {
+                            playSoundFromUri(entry.recordingUri, entry.soundKey);
+                          } else {
+                            playSound(entry.soundKey);
+                          }
+                        }}
+                        activeOpacity={0.75}
+                      >
                         <Text style={[styles.replayText, isHuman && styles.replayTextHuman]}>
-                          ▶ 再生
+                          {strings.common.replay}
                         </Text>
                       </TouchableOpacity>
                     ) : null}
                     <Text style={[styles.timestamp, isHuman && styles.timestampHuman]}>
-                      {formatTimestamp(entry.createdAt)}
+                      {formatThreadTime(entry.createdAt, language)}
                     </Text>
                   </View>
                 </View>
@@ -319,10 +334,10 @@ export default function ConversationScreen({ navigation }: Props) {
         {pendingState === 'text_loading' && (
           <View style={[styles.bubbleRow, styles.bubbleRowHuman]}>
             <View style={[styles.bubble, styles.bubblePendingHuman]}>
-              <Text style={styles.roleLabelHuman}>HUMAN → CAT</Text>
+              <Text style={styles.roleLabelHuman}>{strings.common.humanToCatSystem}</Text>
               <View style={styles.pendingRow}>
                 <ActivityIndicator size="small" color="#0e0e14" />
-                <Text style={styles.pendingTextHuman}>猫語に変換中…</Text>
+                <Text style={styles.pendingTextHuman}>{strings.common.loadingTranslateText}</Text>
               </View>
             </View>
           </View>
@@ -331,10 +346,10 @@ export default function ConversationScreen({ navigation }: Props) {
         {pendingState === 'audio_loading' && (
           <View style={[styles.bubbleRow, styles.bubbleRowCat]}>
             <View style={[styles.bubble, styles.bubblePendingCat]}>
-              <Text style={styles.roleLabel}>CAT → HUMAN</Text>
+              <Text style={styles.roleLabel}>{strings.common.catToHumanSystem}</Text>
               <View style={styles.pendingRow}>
                 <ActivityIndicator size="small" color="#a0e0c0" />
-                <Text style={styles.pendingTextCat}>鳴き声を解析中…</Text>
+                <Text style={styles.pendingTextCat}>{strings.common.loadingAnalyzeAudio}</Text>
               </View>
             </View>
           </View>
@@ -344,7 +359,7 @@ export default function ConversationScreen({ navigation }: Props) {
       <View style={styles.composerWrap}>
         {pendingState === 'recording' && (
           <>
-            <Text style={styles.recordingLabel}>RECORDING CAT AUDIO…</Text>
+            <Text style={styles.recordingLabel}>{strings.common.recordingActive}</Text>
             <View style={styles.waveform}>
               {barAnims.map((anim, i) => (
                 <Animated.View key={i} style={[styles.waveBar, { height: anim }]} />
@@ -354,7 +369,7 @@ export default function ConversationScreen({ navigation }: Props) {
         )}
 
         {permissionError && (
-          <Text style={styles.permissionError}>マイクのアクセスを許可してください</Text>
+          <Text style={styles.permissionError}>{strings.common.micPermission}</Text>
         )}
 
         <View style={styles.composer}>
@@ -377,7 +392,9 @@ export default function ConversationScreen({ navigation }: Props) {
                     styles.recButtonTextDisabled,
                 ]}
               >
-                {pendingState === 'recording' ? '■ STOP' : '● REC'}
+                {pendingState === 'recording'
+                  ? strings.common.stopLabel
+                  : strings.common.recLabel}
               </Text>
             </TouchableOpacity>
           </Animated.View>
@@ -387,7 +404,7 @@ export default function ConversationScreen({ navigation }: Props) {
               style={styles.input}
               value={inputText}
               onChangeText={setInputText}
-              placeholder="猫に話しかける…"
+              placeholder={strings.conversation.inputPlaceholder}
               placeholderTextColor="#4a4a66"
               multiline
               numberOfLines={2}
@@ -414,7 +431,7 @@ export default function ConversationScreen({ navigation }: Props) {
                   : styles.sendButtonTextDisabled,
               ]}
             >
-              送信
+              {strings.common.send}
             </Text>
           </TouchableOpacity>
         </View>

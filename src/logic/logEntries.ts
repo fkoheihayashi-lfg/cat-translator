@@ -18,7 +18,8 @@ export function buildHumanToCatLogEntry(reply: CatReply): NewLogEntry {
 }
 
 export function buildCatToHumanLogEntry(
-  interpretation: CatInterpretation
+  interpretation: CatInterpretation,
+  recordingUri?: string
 ): NewLogEntry {
   return {
     direction: 'cat_to_human',
@@ -29,5 +30,6 @@ export function buildCatToHumanLogEntry(
     mood: interpretation.mood,
     source: interpretation.source,
     inputMode: interpretation.inputMode,
+    recordingUri,
   };
 }

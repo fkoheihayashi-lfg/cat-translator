@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { AppLanguage } from '../i18n/strings';
 import { buildCatPersonaState, CatPersonaState } from '../logic/catPersona';
 
 export type LogEntry = {
@@ -11,8 +12,9 @@ export type LogEntry = {
   soundKey: string;      // key into SOUND_MAP
   mood: string;          // mood label (e.g. '甘え'), '' if unknown
   createdAt: number;     // Date.now()
-  source: 'mock' | 'ai';
+  source: 'mock' | 'ai' | 'yamnet_server';
   inputMode: 'recording' | 'text';
+  recordingUri?: string;
 };
 
 export type CatProfile = {
@@ -22,18 +24,22 @@ export type CatProfile = {
 
 type CatContextType = {
   profile: CatProfile;
+  language: AppLanguage;
   personaState: CatPersonaState;
   setProfile: (p: CatProfile) => void;
+  setLanguage: (language: AppLanguage) => void;
   log: LogEntry[];
   addLog: (entry: Omit<LogEntry, 'id' | 'createdAt'>) => void;
 };
 
 const KEYS = {
   profile: '@cat_profile',
-  log:     '@cat_log',
+  log: '@cat_log',
+  language: '@app_language',
 } as const;
 
 const DEFAULT_PROFILE: CatProfile = { name: '', personality: '甘えん坊' };
+const DEFAULT_LANGUAGE: AppLanguage = 'ja';
 
 // Migrate entries written before the LogEntry type was normalised.
 // Old shape: { id, direction, catSound, text, timestamp }
@@ -50,6 +56,10 @@ function migrateEntry(raw: any): LogEntry {
       createdAt:      raw.createdAt ?? raw.id ?? Date.now(),
       source:         raw.source ?? 'mock',
       inputMode:      raw.inputMode ?? (raw.direction === 'human_to_cat' ? 'text' : 'recording'),
+      recordingUri:
+        typeof raw.recordingUri === 'string' && raw.recordingUri.length > 0
+          ? raw.recordingUri
+          : undefined,
     };
   }
   return {
@@ -63,6 +73,10 @@ function migrateEntry(raw: any): LogEntry {
     createdAt:     raw.id            ?? Date.now(),
     source:        'mock',
     inputMode:     raw.direction === 'human_to_cat' ? 'text' : 'recording',
+    recordingUri:
+      typeof raw.recordingUri === 'string' && raw.recordingUri.length > 0
+        ? raw.recordingUri
+        : undefined,
   };
 }
 
@@ -80,15 +94,23 @@ function migrateProfile(raw: any): CatProfile {
 
 export function CatProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfileState] = useState<CatProfile>(DEFAULT_PROFILE);
-  const [log, setLog]              = useState<LogEntry[]>([]);
-  const [ready, setReady]          = useState(false);
+  const [language, setLanguageState] = useState<AppLanguage>(DEFAULT_LANGUAGE);
+  const [log, setLog] = useState<LogEntry[]>([]);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const [profileRaw, logRaw] = await AsyncStorage.multiGet([KEYS.profile, KEYS.log]);
+        const [profileRaw, logRaw, languageRaw] = await AsyncStorage.multiGet([
+          KEYS.profile,
+          KEYS.log,
+          KEYS.language,
+        ]);
         if (profileRaw[1]) setProfileState(migrateProfile(JSON.parse(profileRaw[1])));
-        if (logRaw[1])     setLog((JSON.parse(logRaw[1]) as any[]).map(migrateEntry));
+        if (logRaw[1]) setLog((JSON.parse(logRaw[1]) as any[]).map(migrateEntry));
+        if (languageRaw[1] === 'ja' || languageRaw[1] === 'en') {
+          setLanguageState(languageRaw[1]);
+        }
       } catch {
         // Corrupt data — fall back to defaults silently
       } finally {
@@ -104,10 +126,16 @@ export function CatProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!ready) return;
+    AsyncStorage.setItem(KEYS.language, language).catch(() => {});
+  }, [language, ready]);
+
+  useEffect(() => {
+    if (!ready) return;
     AsyncStorage.setItem(KEYS.log, JSON.stringify(log)).catch(() => {});
   }, [log, ready]);
 
   const setProfile = (p: CatProfile) => setProfileState(p);
+  const setLanguage = (nextLanguage: AppLanguage) => setLanguageState(nextLanguage);
   const personaState = buildCatPersonaState(profile, log);
 
   const addLog = (entry: Omit<LogEntry, 'id' | 'createdAt'>) => {
@@ -118,7 +146,9 @@ export function CatProvider({ children }: { children: React.ReactNode }) {
   if (!ready) return null;
 
   return (
-    <CatContext.Provider value={{ profile, personaState, setProfile, log, addLog }}>
+    <CatContext.Provider
+      value={{ profile, language, personaState, setProfile, setLanguage, log, addLog }}
+    >
       {children}
     </CatContext.Provider>
   );

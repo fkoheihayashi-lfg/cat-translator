@@ -1,5 +1,6 @@
 import { Audio } from 'expo-av';
 import { CatProfile } from '../context/CatContext';
+import { AppLanguage } from '../i18n/strings';
 import { analyzeCatAudio, CatInterpretation } from './analyzeCatAudio';
 import {
   generateCatReply,
@@ -40,6 +41,7 @@ function waitMs(ms: number, signal?: AbortSignal): Promise<void> {
 
 export type RunHumanToCatTextTransactionOptions = {
   text: string;
+  language: AppLanguage;
   profile: CatProfile;
   personaState: CatPersonaState;
   log: LogEntryLike[];
@@ -52,6 +54,7 @@ export type RunHumanToCatTextTransactionOptions = {
 
 export async function runHumanToCatTextTransaction({
   text,
+  language,
   profile,
   personaState,
   log,
@@ -70,6 +73,7 @@ export async function runHumanToCatTextTransaction({
   try {
     const replyInput: GenerateCatReplyInput = {
       text: normalizedText,
+      language,
       profile,
       personaState,
       log,
@@ -115,18 +119,20 @@ export async function startCatRecordingSession({
 
 export type RunCatAudioAnalysisTransactionOptions = {
   recording: Audio.Recording | null;
+  language: AppLanguage;
   profile: CatProfile;
   personaState: CatPersonaState;
   addLog: AddLog;
   delayMs?: number;
   signal?: AbortSignal;
   onStartAnalysis?: () => void;
-  onInterpretation?: (interpretation: CatInterpretation) => void;
+  onInterpretation?: (interpretation: CatInterpretation, recordingUri?: string) => void;
   onComplete?: () => void;
 };
 
 export async function runCatAudioAnalysisTransaction({
   recording,
+  language,
   profile,
   personaState,
   addLog,
@@ -145,12 +151,13 @@ export async function runCatAudioAnalysisTransaction({
 
     const interpretation = await analyzeCatAudio({
       recordingUri,
+      language,
       profile,
       personaState,
     });
 
-    addLog(buildCatToHumanLogEntry(interpretation));
-    onInterpretation?.(interpretation);
+    addLog(buildCatToHumanLogEntry(interpretation, recordingUri));
+    onInterpretation?.(interpretation, recordingUri);
     await playSound(interpretation.soundKey);
     return interpretation;
   } finally {

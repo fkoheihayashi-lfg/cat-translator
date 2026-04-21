@@ -1,37 +1,52 @@
+import {
+  AppLanguage,
+  formatWithVars,
+  getBondLabel,
+  getCommunicationHintText,
+  getStrings,
+} from '../i18n/strings';
 import { CatPersonaState } from './catPersona';
 
 export function getCommunicationStatusText(
   catName: string,
-  bondLabel: string
+  personaState: CatPersonaState,
+  language: AppLanguage
 ): string {
-  return catName
-    ? `${catName} LINK ACTIVE · ${bondLabel}`
-    : `CAT COMM LINK ACTIVE · ${bondLabel}`;
+  const bond = getBondLabel(personaState, language);
+  if (language === 'ja') {
+    return catName ? `${catName} と通信中 · ${bond}` : `通信リンク動作中 · ${bond}`;
+  }
+  return catName ? `${catName} LINK ACTIVE · ${bond}` : `CAT COMM LINK ACTIVE · ${bond}`;
 }
 
 export function getConversationThreadStatusText(
   logCount: number,
-  communicationHint: string
+  personaState: CatPersonaState,
+  language: AppLanguage
 ): string {
-  return logCount > 0
-    ? `THREAD ${logCount} LOGS · ${communicationHint}`
-    : `THREAD STANDBY · ${communicationHint}`;
+  const hint = getCommunicationHintText(personaState, language);
+  if (language === 'ja') {
+    return logCount > 0 ? `スレッド ${logCount} 件 · ${hint}` : `待機中 · ${hint}`;
+  }
+  return logCount > 0 ? `THREAD ${logCount} LOGS · ${hint}` : `THREAD STANDBY · ${hint}`;
 }
 
 export function getHomeStatusText(
   catName: string,
-  personaState: CatPersonaState
+  personaState: CatPersonaState,
+  language: AppLanguage
 ): string {
-  return catName
-    ? `◆ ${catName} と通信中 · ${personaState.bondLabel}`
-    : `◆ CAT COMM LINK ACTIVE · ${personaState.bondLabel}`;
+  return getCommunicationStatusText(catName, personaState, language);
 }
 
 export function getHomeLogSummaryText(
   logCount: number,
-  communicationHint: string
+  personaState: CatPersonaState,
+  language: AppLanguage
 ): string {
+  const strings = getStrings(language);
+  const hint = getCommunicationHintText(personaState, language);
   return logCount > 0
-    ? `会話スレッド ${logCount} 件 · ${communicationHint}`
-    : `会話スレッド 未開始 · ${communicationHint}`;
+    ? formatWithVars(strings.home.threadCount, { count: logCount, hint })
+    : formatWithVars(strings.home.threadEmpty, { hint });
 }

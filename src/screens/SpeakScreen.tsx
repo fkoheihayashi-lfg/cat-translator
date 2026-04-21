@@ -17,6 +17,7 @@ import {
 import { RootStackParamList } from '../../App';
 import CatAvatar from '../components/CatAvatar';
 import { useCat } from '../context/CatContext';
+import { getStrings } from '../i18n/strings';
 import { CatReply, SOUND_AVATAR } from '../logic/generateCatReply';
 import { runHumanToCatTextTransaction } from '../logic/textConversation';
 import { playSound } from '../utils/playSound';
@@ -28,7 +29,8 @@ type Props = {
 type UiState = 'idle' | 'loading' | 'result';
 
 export default function SpeakScreen({ navigation }: Props) {
-  const { profile, personaState, log, addLog } = useCat();
+  const { profile, language, personaState, log, addLog } = useCat();
+  const strings = getStrings(language);
   const [inputText, setInputText] = useState('');
   const [uiState, setUiState] = useState<UiState>('idle');
   const [result, setResult] = useState<CatReply | null>(null);
@@ -70,6 +72,7 @@ export default function SpeakScreen({ navigation }: Props) {
         try {
           await runHumanToCatTextTransaction({
             text: inputText.trim(),
+            language,
             profile,
             personaState,
             log,
@@ -102,13 +105,13 @@ export default function SpeakScreen({ navigation }: Props) {
       <StatusBar barStyle="light-content" />
 
       <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
-        <Text style={styles.backText}>← 戻る</Text>
+        <Text style={styles.backText}>{strings.common.back}</Text>
       </TouchableOpacity>
 
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.title}>話しかける</Text>
-          <Text style={styles.subtitle}>猫に伝えたいことを入力してください</Text>
+          <Text style={styles.title}>{strings.speak.title}</Text>
+          <Text style={styles.subtitle}>{strings.speak.subtitle}</Text>
         </View>
 
         <View style={styles.composer}>
@@ -116,7 +119,7 @@ export default function SpeakScreen({ navigation }: Props) {
             style={styles.input}
             value={inputText}
             onChangeText={setInputText}
-            placeholder="例：大好きだよ、かわいいね"
+            placeholder={strings.speak.inputPlaceholder}
             placeholderTextColor="#4a4a66"
             multiline
             numberOfLines={3}
@@ -136,7 +139,7 @@ export default function SpeakScreen({ navigation }: Props) {
                 (!canSend || uiState === 'loading') && styles.sendButtonTextDisabled,
               ]}
             >
-              送信
+              {strings.common.send}
             </Text>
           </TouchableOpacity>
         </View>
@@ -144,18 +147,18 @@ export default function SpeakScreen({ navigation }: Props) {
         {uiState === 'loading' && (
           <View style={styles.card}>
             <ActivityIndicator size="large" color="#a0e0c0" />
-            <Text style={styles.loadingText}>変換中…</Text>
+            <Text style={styles.loadingText}>{strings.speak.loading}</Text>
           </View>
         )}
 
         {uiState === 'result' && result && (
           <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
             <CatAvatar mood={SOUND_AVATAR[result.soundKey] ?? 'neutral'} size="large" />
-            <Text style={styles.moodBadge}>猫語</Text>
+            <Text style={styles.moodBadge}>{strings.speak.badge}</Text>
             <Text style={styles.catSound}>{result.catSound}</Text>
             <Text style={styles.translatedText}>{result.responseText}</Text>
             <TouchableOpacity onPress={() => playSound(result.soundKey)} activeOpacity={0.75}>
-              <Text style={styles.replayText}>▶ もう一度再生</Text>
+              <Text style={styles.replayText}>{strings.common.replayAgain}</Text>
             </TouchableOpacity>
           </Animated.View>
         )}

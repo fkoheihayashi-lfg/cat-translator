@@ -2,12 +2,16 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useEffect, useRef } from 'react';
 import { Animated, StyleSheet } from 'react-native';
 import { RootStackParamList } from '../../App';
+import { useCat } from '../context/CatContext';
+import { getStrings } from '../i18n/strings';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Boot'>;
 };
 
 export default function BootScreen({ navigation }: Props) {
+  const { language } = useCat();
+  const strings = getStrings(language);
   const systemLabel = useRef(new Animated.Value(0)).current;
   const mainTitle   = useRef(new Animated.Value(0)).current;
   const subtitle    = useRef(new Animated.Value(0)).current;
@@ -37,19 +41,19 @@ export default function BootScreen({ navigation }: Props) {
   return (
     <Animated.View style={[styles.container, { opacity: screenOpacity }]}>
       <Animated.Text style={[styles.systemLabel, { opacity: systemLabel }]}>
-        SYSTEM BOOT
+        {strings.boot.systemBoot}
       </Animated.Text>
 
       <Animated.Text style={[styles.title, { opacity: mainTitle }]}>
-        CAT TRANSLATOR
+        {strings.boot.title}
       </Animated.Text>
 
       <Animated.Text style={[styles.subtitle, { opacity: subtitle }]}>
-        Cat · Human Interpreter
+        {strings.boot.subtitle}
       </Animated.Text>
 
       <Animated.Text style={[styles.statusLine, { opacity: statusLine }]}>
-        LINK ESTABLISHED ◆
+        {strings.boot.status}
       </Animated.Text>
     </Animated.View>
   );

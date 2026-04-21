@@ -14,14 +14,36 @@ export const SOUND_MAP: Record<string, any> = {
 
 let activeSound: Audio.Sound | null = null;
 
+async function stopActive(): Promise<void> {
+  if (activeSound) {
+    await activeSound.stopAsync().catch(() => {});
+    await activeSound.unloadAsync().catch(() => {});
+    activeSound = null;
+  }
+}
+
+export async function playSoundFromUri(uri: string, fallbackKey?: string): Promise<boolean> {
+  try {
+    await stopActive();
+    const { sound } = await Audio.Sound.createAsync({ uri });
+    activeSound = sound;
+    await sound.playAsync();
+    sound.setOnPlaybackStatusUpdate((status) => {
+      if (status.isLoaded && status.didJustFinish) {
+        if (activeSound === sound) activeSound = null;
+        sound.unloadAsync();
+      }
+    });
+    return true;
+  } catch {
+    if (fallbackKey) await playSound(fallbackKey);
+    return false;
+  }
+}
+
 export async function playSound(soundKey: string): Promise<void> {
   try {
-    if (activeSound) {
-      await activeSound.stopAsync().catch(() => {});
-      await activeSound.unloadAsync().catch(() => {});
-      activeSound = null;
-    }
-
+    await stopActive();
     const { sound } = await Audio.Sound.createAsync(
       SOUND_MAP[soundKey] ?? SOUND_MAP['default']
     );

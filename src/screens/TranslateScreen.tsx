@@ -13,6 +13,7 @@ import {
 import { RootStackParamList } from '../../App';
 import CatAvatar from '../components/CatAvatar';
 import { useCat } from '../context/CatContext';
+import { getMoodLabel, getStrings } from '../i18n/strings';
 import {
   CatInterpretation,
   getAvatarMoodFromInterpretation,
@@ -21,21 +22,11 @@ import {
   runCatAudioAnalysisTransaction,
   startCatRecordingSession,
 } from '../logic/textConversation';
-import { playSound } from '../utils/playSound';
+import { playSound, playSoundFromUri } from '../utils/playSound';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Translate'>;
 };
-
-const COPY = {
-  ja: {
-    title: 'CAT TRANSLATOR',
-    subtitle: 'Cat → Human Interpreter',
-    listenAgain: 'もう一度聞かせる',
-    analyzing: '解析中…',
-  },
-} as const;
-const t = COPY.ja;
 
 type AppState = 'idle' | 'analyzing' | 'result';
 type RecordingState = 'idle' | 'recording';
@@ -43,9 +34,11 @@ type RecordingState = 'idle' | 'recording';
 const BAR_DURATIONS = [280, 340, 220, 380, 260];
 
 export default function TranslateScreen({ navigation }: Props) {
-  const { profile, personaState, addLog } = useCat();
+  const { profile, language, personaState, addLog } = useCat();
+  const strings = getStrings(language);
   const [appState, setAppState]             = useState<AppState>('idle');
   const [result, setResult]                 = useState<CatInterpretation | null>(null);
+  const [resultUri, setResultUri]           = useState<string | undefined>(undefined);
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recording, setRecording]           = useState<Audio.Recording | null>(null);
   const [permissionError, setPermissionError] = useState(false);
@@ -140,6 +133,7 @@ export default function TranslateScreen({ navigation }: Props) {
         setRecordingState('idle');
         await runCatAudioAnalysisTransaction({
           recording,
+          language,
           profile,
           personaState,
           addLog,
@@ -147,9 +141,11 @@ export default function TranslateScreen({ navigation }: Props) {
           onStartAnalysis: () => {
             setAppState('analyzing');
             setResult(null);
+            setResultUri(undefined);
           },
-          onInterpretation: (interpretation) => {
+          onInterpretation: (interpretation, uri) => {
             setResult(interpretation);
+            setResultUri(uri);
             setAppState('result');
           },
           onComplete: () => {
@@ -175,37 +171,47 @@ export default function TranslateScreen({ navigation }: Props) {
       <StatusBar barStyle="light-content" />
 
       <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
-        <Text style={styles.backText}>← 戻る</Text>
+        <Text style={styles.backText}>{strings.common.back}</Text>
       </TouchableOpacity>
 
       <View style={styles.header}>
-        <Text style={styles.title}>{t.title}</Text>
-        <Text style={styles.subtitle}>{t.subtitle}</Text>
+        <Text style={styles.title}>{strings.translate.title}</Text>
+        <Text style={styles.subtitle}>{strings.translate.subtitle}</Text>
       </View>
 
       {isAnalyzing && (
         <View style={styles.card}>
           <ActivityIndicator size="large" color="#a0e0c0" />
-          <Text style={styles.analyzingText}>{t.analyzing}</Text>
+          <Text style={styles.analyzingText}>{strings.translate.analyzing}</Text>
         </View>
       )}
 
       {appState === 'result' && result && (
-        <>
+          <>
           <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
             <CatAvatar mood={getAvatarMoodFromInterpretation(result)} size="large" />
-            <Text style={styles.moodBadge}>{result.mood}</Text>
+            <Text style={styles.moodBadge}>{getMoodLabel(result.mood, language)}</Text>
             <Text style={styles.catSubtitle}>{result.catSubtitle}</Text>
             <Text style={styles.translatedText}>{result.translatedText}</Text>
             <TouchableOpacity
-              onPress={() => playSound(result.soundKey)}
+              onPress={() => {
+                if (resultUri) {
+                  playSoundFromUri(resultUri, result.soundKey);
+                } else {
+                  playSound(result.soundKey);
+                }
+              }}
               activeOpacity={0.75}
             >
-              <Text style={styles.replayText}>▶ もう一度再生</Text>
+              <Text style={styles.replayText}>{strings.common.replayAgain}</Text>
             </TouchableOpacity>
           </Animated.View>
-          <TouchableOpacity style={styles.buttonRepeat} onPress={() => setAppState('idle')} activeOpacity={0.75}>
-            <Text style={styles.buttonRepeatText}>{t.listenAgain}</Text>
+          <TouchableOpacity
+            style={styles.buttonRepeat}
+            onPress={() => { setAppState('idle'); setResultUri(undefined); }}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.buttonRepeatText}>{strings.translate.listenAgain}</Text>
           </TouchableOpacity>
         </>
       )}
@@ -214,7 +220,7 @@ export default function TranslateScreen({ navigation }: Props) {
 
       {!isAnalyzing && appState !== 'result' && (
         <View style={styles.recSection}>
-          <Text style={styles.recLabel}>猫の声を聞かせる</Text>
+          <Text style={styles.recLabel}>{strings.translate.prompt}</Text>
 
           {recordingState === 'recording' && (
             <View style={styles.waveform}>
@@ -232,13 +238,15 @@ export default function TranslateScreen({ navigation }: Props) {
               disabled={actionLockRef.current}
             >
               <Text style={[styles.recButtonText, recordingState === 'recording' && styles.recButtonTextActive]}>
-                {recordingState === 'recording' ? '■ STOP' : '● REC'}
+                {recordingState === 'recording'
+                  ? strings.common.stopLabel
+                  : strings.common.recLabel}
               </Text>
             </TouchableOpacity>
           </Animated.View>
 
           {permissionError && (
-            <Text style={styles.permissionError}>マイクのアクセスを許可してください</Text>
+            <Text style={styles.permissionError}>{strings.common.micPermission}</Text>
           )}
         </View>
       )}

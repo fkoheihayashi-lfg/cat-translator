@@ -4,6 +4,11 @@ import { Animated, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'r
 import { RootStackParamList } from '../../App';
 import { useCat } from '../context/CatContext';
 import {
+  getBondHintText,
+  getRecentThemeSummaryText,
+  getStrings,
+} from '../i18n/strings';
+import {
   getHomeLogSummaryText,
   getHomeStatusText,
 } from '../logic/statusText';
@@ -13,18 +18,16 @@ type Props = {
 };
 
 export default function HomeScreen({ navigation }: Props) {
-  const { profile, personaState, log } = useCat();
+  const { profile, language, setLanguage, personaState, log } = useCat();
+  const strings = getStrings(language);
   const latestLog = log.length > 0 ? log[log.length - 1] : null;
-  const statusText = getHomeStatusText(profile.name, personaState);
-  const logSummaryText = getHomeLogSummaryText(
-    log.length,
-    personaState.communicationHint
-  );
+  const statusText = getHomeStatusText(profile.name, personaState, language);
+  const logSummaryText = getHomeLogSummaryText(log.length, personaState, language);
   const latestHint = latestLog
     ? latestLog.direction === 'cat_to_human'
-      ? `最新の受信: ${latestLog.translatedText}`
-      : `最新の送信: ${latestLog.translatedText}`
-    : `${personaState.bondHint} · ${personaState.recentThemeSummary}`;
+      ? `${strings.home.latestReceived}: ${latestLog.translatedText}`
+      : `${strings.home.latestSent}: ${latestLog.translatedText}`
+    : `${getBondHintText(personaState, language)} · ${getRecentThemeSummaryText(personaState, language)}`;
 
   const blink = useRef(new Animated.Value(1)).current;
 
@@ -41,14 +44,24 @@ export default function HomeScreen({ navigation }: Props) {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
+      <View style={styles.langToggle}>
+        <TouchableOpacity onPress={() => setLanguage('ja')} activeOpacity={0.7}>
+          <Text style={[styles.langButton, language === 'ja' && styles.langButtonActive]}>JA</Text>
+        </TouchableOpacity>
+        <Text style={styles.langDivider}>|</Text>
+        <TouchableOpacity onPress={() => setLanguage('en')} activeOpacity={0.7}>
+          <Text style={[styles.langButton, language === 'en' && styles.langButtonActive]}>EN</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.top}>
         <View style={styles.commLinkRow}>
           <Text style={styles.commLink}>CAT COMM LINK </Text>
           <Animated.Text style={[styles.commLink, { opacity: blink }]}>◆</Animated.Text>
           <Text style={styles.commLink}> ACTIVE</Text>
         </View>
-        <Text style={styles.title}>CAT TRANSLATOR</Text>
-        <Text style={styles.subtitle}>Cat · Human Interpreter</Text>
+        <Text style={styles.title}>{strings.home.title}</Text>
+        <Text style={styles.subtitle}>{strings.home.subtitle}</Text>
       </View>
 
       <View style={styles.middle}>
@@ -57,16 +70,16 @@ export default function HomeScreen({ navigation }: Props) {
           onPress={() => navigation.navigate('Conversation')}
           activeOpacity={0.75}
         >
-          <Text style={styles.primaryButtonText}>会話をはじめる</Text>
+          <Text style={styles.primaryButtonText}>{strings.home.startConversation}</Text>
         </TouchableOpacity>
-        <Text style={styles.primaryHint}>継続中の会話スレッドを開きます</Text>
+        <Text style={styles.primaryHint}>{strings.home.startHint}</Text>
 
         <TouchableOpacity
           style={styles.primaryButton}
           onPress={() => navigation.navigate('Translate')}
           activeOpacity={0.75}
         >
-          <Text style={styles.primaryButtonText}>聞かせる</Text>
+          <Text style={styles.primaryButtonText}>{strings.home.listen}</Text>
         </TouchableOpacity>
       </View>
 
@@ -76,7 +89,7 @@ export default function HomeScreen({ navigation }: Props) {
           onPress={() => navigation.navigate('Log')}
           activeOpacity={0.75}
         >
-          <Text style={styles.secondaryButtonText}>会話ログ</Text>
+          <Text style={styles.secondaryButtonText}>{strings.home.log}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -84,7 +97,7 @@ export default function HomeScreen({ navigation }: Props) {
           onPress={() => navigation.navigate('Profile')}
           activeOpacity={0.75}
         >
-          <Text style={styles.secondaryButtonText}>猫プロフィール</Text>
+          <Text style={styles.secondaryButtonText}>{strings.home.profile}</Text>
         </TouchableOpacity>
       </View>
 
@@ -187,6 +200,28 @@ const styles = StyleSheet.create({
     color: '#888888',
     fontSize: 14,
     letterSpacing: 2,
+  },
+  langToggle: {
+    position: 'absolute',
+    top: 56,
+    right: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  langButton: {
+    color: '#4a4a66',
+    fontSize: 11,
+    letterSpacing: 2,
+    fontFamily: 'monospace',
+  },
+  langButtonActive: {
+    color: '#a0e0c0',
+  },
+  langDivider: {
+    color: '#333344',
+    fontSize: 11,
+    fontFamily: 'monospace',
   },
   footer: {
     color: '#444444',

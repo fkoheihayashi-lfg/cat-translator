@@ -9,31 +9,25 @@ import {
 } from 'react-native';
 import { RootStackParamList } from '../../App';
 import { LogEntry, useCat } from '../context/CatContext';
+import {
+  formatLogTime,
+  formatWithVars,
+  getMoodLabel,
+  getStrings,
+} from '../i18n/strings';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Log'>;
 };
 
-function formatTimestamp(createdAt: number): string {
-  const d = new Date(createdAt);
-  const now = new Date();
-  const isToday =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  const time = d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-  if (isToday) return `今日 ${time}`;
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  const isYesterday =
-    d.getFullYear() === yesterday.getFullYear() &&
-    d.getMonth() === yesterday.getMonth() &&
-    d.getDate() === yesterday.getDate();
-  if (isYesterday) return `昨日 ${time}`;
-  return `${d.getMonth() + 1}/${d.getDate()} ${time}`;
-}
-
-function EntryCard({ entry }: { entry: LogEntry }) {
+function EntryCard({
+  entry,
+  language,
+}: {
+  entry: LogEntry;
+  language: 'ja' | 'en';
+}) {
+  const strings = getStrings(language);
   const isCatToHuman = entry.direction === 'cat_to_human';
 
   return (
@@ -42,10 +36,10 @@ function EntryCard({ entry }: { entry: LogEntry }) {
       <View style={styles.cardTop}>
         <View style={[styles.badge, isCatToHuman ? styles.badgeCat : styles.badgeHuman]}>
           <Text style={[styles.badgeText, isCatToHuman ? styles.badgeTextCat : styles.badgeTextHuman]}>
-            {isCatToHuman ? '猫 → 人間' : '人間 → 猫'}
+            {isCatToHuman ? strings.common.catToHuman : strings.common.humanToCat}
           </Text>
         </View>
-        <Text style={styles.timestamp}>{formatTimestamp(entry.createdAt)}</Text>
+        <Text style={styles.timestamp}>{formatLogTime(entry.createdAt, language)}</Text>
       </View>
 
       {/* Cat sound */}
@@ -58,10 +52,12 @@ function EntryCard({ entry }: { entry: LogEntry }) {
       {(entry.mood || entry.inputMode) && (
         <View style={styles.metaRow}>
           {entry.mood ? (
-            <Text style={styles.metaMood}>{entry.mood}</Text>
+            <Text style={styles.metaMood}>{getMoodLabel(entry.mood, language)}</Text>
           ) : null}
           <Text style={styles.metaSource}>
-            {entry.inputMode === 'recording' ? '● REC' : '✎ TEXT'}
+            {entry.inputMode === 'recording'
+              ? strings.common.recordingMode
+              : strings.common.textMode}
           </Text>
         </View>
       )}
@@ -70,7 +66,8 @@ function EntryCard({ entry }: { entry: LogEntry }) {
 }
 
 export default function LogScreen({ navigation }: Props) {
-  const { log } = useCat();
+  const { language, log } = useCat();
+  const strings = getStrings(language);
   const entries = [...log].reverse();
 
   return (
@@ -78,12 +75,14 @@ export default function LogScreen({ navigation }: Props) {
       <StatusBar barStyle="light-content" />
 
       <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
-        <Text style={styles.backText}>← 戻る</Text>
+        <Text style={styles.backText}>{strings.common.back}</Text>
       </TouchableOpacity>
 
       <View style={styles.header}>
-        <Text style={styles.title}>会話ログ</Text>
-        <Text style={styles.subtitle}>最近の会話 · {entries.length} 件</Text>
+        <Text style={styles.title}>{strings.log.title}</Text>
+        <Text style={styles.subtitle}>
+          {formatWithVars(strings.log.subtitle, { count: entries.length })}
+        </Text>
       </View>
 
       <ScrollView
@@ -94,11 +93,13 @@ export default function LogScreen({ navigation }: Props) {
         {entries.length === 0 ? (
           <View style={styles.empty}>
             <Text style={styles.emptyIcon}>（・ω・）</Text>
-            <Text style={styles.emptyTitle}>まだ会話がありません</Text>
-            <Text style={styles.emptySubtitle}>猫の声を聞かせてみてください</Text>
+            <Text style={styles.emptyTitle}>{strings.log.emptyTitle}</Text>
+            <Text style={styles.emptySubtitle}>{strings.log.emptySubtitle}</Text>
           </View>
         ) : (
-          entries.map((entry) => <EntryCard key={entry.id} entry={entry} />)
+          entries.map((entry) => (
+            <EntryCard key={entry.id} entry={entry} language={language} />
+          ))
         )}
       </ScrollView>
     </View>

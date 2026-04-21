@@ -120,13 +120,27 @@ export function detectInteractionTheme(entry: LogEntryLike): InteractionTheme {
   if (entry.mood === '安心') return 'comfort';
 
   const text = `${entry.rawText} ${entry.translatedText}`;
-  if (/好き|大好き|愛|かわいい|なで|そば/.test(text)) return 'affection';
-  if (/ごはん|ご飯|おやつ|ちゅーる|食べ/.test(text)) return 'food';
-  if (/遊|あそ|ボール|ねこじゃらし/.test(text)) return 'play';
-  if (/ねむ|眠|寝|おやすみ/.test(text)) return 'rest';
-  if (/さびし|寂し|いない|ここ/.test(text)) return 'comfort';
-  if (/だめ|ダメ|やめ|こら|怒/.test(text)) return 'discipline';
-  if (/なに|何|きになる|気になる/.test(text)) return 'curiosity';
+  if (/好き|大好き|愛|かわいい|なで|そば|love|cute|sweet|pet|cuddle|stay close/i.test(text)) {
+    return 'affection';
+  }
+  if (/ごはん|ご飯|おやつ|ちゅーる|食べ|food|treat|snack|hungry|feed/i.test(text)) {
+    return 'food';
+  }
+  if (/遊|あそ|ボール|ねこじゃらし|play|toy|ball|chase/i.test(text)) {
+    return 'play';
+  }
+  if (/ねむ|眠|寝|おやすみ|sleep|sleepy|nap|rest/i.test(text)) {
+    return 'rest';
+  }
+  if (/さびし|寂し|いない|ここ|miss you|lonely|where are you|stay here|with me/i.test(text)) {
+    return 'comfort';
+  }
+  if (/だめ|ダメ|やめ|こら|怒|no|stop|bad|don't/i.test(text)) {
+    return 'discipline';
+  }
+  if (/なに|何|きになる|気になる|what|curious|interesting|look at this/i.test(text)) {
+    return 'curiosity';
+  }
   return 'general';
 }
 

@@ -11,20 +11,30 @@ import {
 } from 'react-native';
 import { RootStackParamList } from '../../App';
 import { useCat } from '../context/CatContext';
+import {
+  AppLanguage,
+  getPersonalityLabel,
+  getStrings,
+  PERSONALITY_OPTIONS,
+} from '../i18n/strings';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Profile'>;
 };
 
-const PERSONALITIES = ['甘えん坊', 'マイペース', '好奇心旺盛', 'クール'] as const;
-
 export default function ProfileScreen({ navigation }: Props) {
-  const { profile, setProfile } = useCat();
+  const { profile, language, setLanguage, setProfile } = useCat();
+  const strings = getStrings(language);
   const [catName, setCatName] = useState(profile.name);
   const [personality, setPersonality] = useState(profile.personality);
+  const [nextLanguage, setNextLanguage] = useState<AppLanguage>(language);
   const [saved, setSaved] = useState(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSavingRef = useRef(false);
+
+  useEffect(() => {
+    setNextLanguage(language);
+  }, [language]);
 
   useEffect(() => {
     return () => {
@@ -52,22 +62,22 @@ export default function ProfileScreen({ navigation }: Props) {
       <StatusBar barStyle="light-content" />
 
       <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
-        <Text style={styles.backText}>← 戻る</Text>
+        <Text style={styles.backText}>{strings.common.back}</Text>
       </TouchableOpacity>
 
       <View style={styles.inner}>
         <View style={styles.header}>
-          <Text style={styles.title}>猫プロフィール</Text>
-          <Text style={styles.subtitle}>あなたの猫を教えてください</Text>
+          <Text style={styles.title}>{strings.profile.title}</Text>
+          <Text style={styles.subtitle}>{strings.profile.subtitle}</Text>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.label}>猫の名前</Text>
+          <Text style={styles.label}>{strings.profile.nameLabel}</Text>
           <TextInput
             style={styles.input}
             value={catName}
             onChangeText={setCatName}
-            placeholder="例：むぎ、そら、ちゃこ"
+            placeholder={strings.profile.namePlaceholder}
             placeholderTextColor="#4a4a66"
             maxLength={20}
             returnKeyType="done"
@@ -75,9 +85,9 @@ export default function ProfileScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.label}>性格タイプ</Text>
+          <Text style={styles.label}>{strings.profile.personalityLabel}</Text>
           <View style={styles.chips}>
-            {PERSONALITIES.map((p) => {
+            {PERSONALITY_OPTIONS.map((p) => {
               const selected = personality === p;
               return (
                 <TouchableOpacity
@@ -87,7 +97,35 @@ export default function ProfileScreen({ navigation }: Props) {
                   activeOpacity={0.75}
                 >
                   <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-                    {p}
+                    {getPersonalityLabel(p, language)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>{strings.profile.languageLabel}</Text>
+          <Text style={styles.sectionHint}>{strings.profile.languageSubtitle}</Text>
+          <View style={styles.chips}>
+            {([
+              { value: 'ja' as const, label: strings.profile.languageJa },
+              { value: 'en' as const, label: strings.profile.languageEn },
+            ] as const).map((item) => {
+              const selected = nextLanguage === item.value;
+              return (
+                <TouchableOpacity
+                  key={item.value}
+                  style={[styles.chip, selected && styles.chipSelected]}
+                  onPress={() => {
+                    setNextLanguage(item.value);
+                    setLanguage(item.value);
+                  }}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+                    {item.label}
                   </Text>
                 </TouchableOpacity>
               );
@@ -101,10 +139,10 @@ export default function ProfileScreen({ navigation }: Props) {
           activeOpacity={0.8}
           disabled={saved}
         >
-          <Text style={styles.saveButtonText}>保存する</Text>
+          <Text style={styles.saveButtonText}>{strings.common.save}</Text>
         </TouchableOpacity>
 
-        {saved && <Text style={styles.savedConfirm}>保存しました ✓</Text>}
+        {saved && <Text style={styles.savedConfirm}>{strings.common.saved}</Text>}
       </View>
     </View>
   );
@@ -151,6 +189,12 @@ const styles = StyleSheet.create({
   section: {
     width: '100%',
     gap: 6,
+  },
+  sectionHint: {
+    color: '#5d5d72',
+    fontSize: 11,
+    letterSpacing: 0.5,
+    marginBottom: 6,
   },
   label: {
     color: '#a0e0c0',
