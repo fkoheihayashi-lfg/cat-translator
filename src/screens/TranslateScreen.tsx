@@ -13,13 +13,16 @@ import {
 import { RootStackParamList } from '../../App';
 import CatAvatar from '../components/CatAvatar';
 import { useCat } from '../context/CatContext';
-import { getMoodLabel, getStrings } from '../i18n/strings';
 import {
-  AudioAnalysisBridgeStatus,
+  getConfidenceBandLabel,
+  getIntentLabel,
+  getMoodLabel,
+  getStrings,
+} from '../i18n/strings';
+import {
   CatInterpretation,
-  checkAudioAnalysisBridgeStatus,
-  getAudioAnalysisBridgeDebugLabel,
   getAvatarMoodFromInterpretation,
+  getLocalAnalysisDebugLabel,
 } from '../logic/analyzeCatAudio';
 import {
   runCatAudioAnalysisTransaction,
@@ -37,12 +40,11 @@ type RecordingState = 'idle' | 'recording';
 const BAR_DURATIONS = [280, 340, 220, 380, 260];
 
 export default function TranslateScreen({ navigation }: Props) {
-  const { profile, language, personaState, addLog } = useCat();
+  const { profile, language, personaState, log, addLog } = useCat();
   const strings = getStrings(language);
   const [appState, setAppState]             = useState<AppState>('idle');
   const [result, setResult]                 = useState<CatInterpretation | null>(null);
   const [resultUri, setResultUri]           = useState<string | undefined>(undefined);
-  const [bridgeStatus, setBridgeStatus]     = useState<AudioAnalysisBridgeStatus | null>(null);
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recording, setRecording]           = useState<Audio.Recording | null>(null);
   const [permissionError, setPermissionError] = useState(false);
@@ -60,12 +62,6 @@ export default function TranslateScreen({ navigation }: Props) {
   // Result card fade-in
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  const loadBridgeStatus = async (): Promise<void> => {
-    if (!__DEV__) return;
-    const status = await checkAudioAnalysisBridgeStatus();
-    setBridgeStatus(status);
-  };
-
   // Audio mode on mount
   useEffect(() => {
     Audio.setAudioModeAsync({
@@ -76,20 +72,6 @@ export default function TranslateScreen({ navigation }: Props) {
 
     return () => {
       recordingAbortRef.current?.abort();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!__DEV__) return;
-
-    let active = true;
-    void (async () => {
-      const status = await checkAudioAnalysisBridgeStatus();
-      if (active) setBridgeStatus(status);
-    })();
-
-    return () => {
-      active = false;
     };
   }, []);
 
@@ -160,6 +142,7 @@ export default function TranslateScreen({ navigation }: Props) {
           language,
           profile,
           personaState,
+          log,
           addLog,
           signal: recordingAbortRef.current.signal,
           onStartAnalysis: () => {
@@ -175,7 +158,6 @@ export default function TranslateScreen({ navigation }: Props) {
           onComplete: () => {
             actionLockRef.current = false;
             recordingAbortRef.current = null;
-            void loadBridgeStatus();
           },
         });
       } catch {
@@ -185,13 +167,15 @@ export default function TranslateScreen({ navigation }: Props) {
         setAppState('idle');
         setResult(null);
         recordingAbortRef.current = null;
-        void loadBridgeStatus();
       }
     }
   };
 
   const isAnalyzing = appState === 'analyzing';
-  const devBridgeLabel = getAudioAnalysisBridgeDebugLabel(bridgeStatus);
+  const devAnalysisLabel = getLocalAnalysisDebugLabel({
+    provider: 'local',
+    ready: true,
+  });
 
   return (
     <View style={styles.container}>
@@ -204,7 +188,7 @@ export default function TranslateScreen({ navigation }: Props) {
       <View style={styles.header}>
         <Text style={styles.title}>{strings.translate.title}</Text>
         <Text style={styles.subtitle}>{strings.translate.subtitle}</Text>
-        {!!devBridgeLabel && <Text style={styles.devStatus}>{devBridgeLabel}</Text>}
+        {!!devAnalysisLabel && <Text style={styles.devStatus}>{devAnalysisLabel}</Text>}
       </View>
 
       {isAnalyzing && (
@@ -219,6 +203,12 @@ export default function TranslateScreen({ navigation }: Props) {
           <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
             <CatAvatar mood={getAvatarMoodFromInterpretation(result)} size="large" />
             <Text style={styles.moodBadge}>{getMoodLabel(result.mood, language)}</Text>
+            <View style={styles.metaRow}>
+              <Text style={styles.metaPill}>{getIntentLabel(result.primaryIntent, language)}</Text>
+              <Text style={styles.metaPill}>
+                {getConfidenceBandLabel(result.confidenceBand, language)}
+              </Text>
+            </View>
             <Text style={styles.catSubtitle}>{result.catSubtitle}</Text>
             <Text style={styles.translatedText}>{result.translatedText}</Text>
             <TouchableOpacity
@@ -342,6 +332,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 20,
+    overflow: 'hidden',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  metaPill: {
+    color: '#7fcfaf',
+    fontSize: 10,
+    letterSpacing: 1.2,
+    borderWidth: 1,
+    borderColor: '#355242',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     overflow: 'hidden',
   },
   catSubtitle: {

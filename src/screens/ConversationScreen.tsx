@@ -21,6 +21,8 @@ import { useCat } from '../context/CatContext';
 import {
   formatThreadTime,
   getBondHintText,
+  getConfidenceBandLabel,
+  getIntentLabel,
   getMoodLabel,
   getRecentThemeSummaryText,
   getStrings,
@@ -197,6 +199,7 @@ export default function ConversationScreen({ navigation }: Props) {
         language,
         profile,
         personaState,
+        log,
         addLog,
         signal: recordingAbortRef.current.signal,
         onStartAnalysis: () => {
@@ -303,6 +306,16 @@ export default function ConversationScreen({ navigation }: Props) {
                     {entry.mood ? (
                       <Text style={[styles.moodTag, isHuman && styles.moodTagHuman]}>
                         {getMoodLabel(entry.mood, language)}
+                      </Text>
+                    ) : null}
+                    {!isHuman && entry.primaryIntent ? (
+                      <Text style={styles.analysisTag}>
+                        {getIntentLabel(entry.primaryIntent, language)}
+                      </Text>
+                    ) : null}
+                    {!isHuman && entry.confidenceBand ? (
+                      <Text style={styles.analysisTag}>
+                        {getConfidenceBandLabel(entry.confidenceBand, language)}
                       </Text>
                     ) : null}
                     {entry.soundKey ? (
@@ -617,6 +630,17 @@ const styles = StyleSheet.create({
     color: '#7fcfaf',
     fontSize: 11,
     letterSpacing: 1,
+  },
+  analysisTag: {
+    color: '#6ec0a3',
+    fontSize: 10,
+    letterSpacing: 1,
+    borderWidth: 1,
+    borderColor: '#2f4d42',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    overflow: 'hidden',
   },
   replayTextHuman: {
     color: '#24463a',

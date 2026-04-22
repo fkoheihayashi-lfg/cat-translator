@@ -14,6 +14,7 @@ export const SOUND_MAP: Record<string, any> = {
 };
 
 let activeSound: Audio.Sound | null = null;
+let soundLoading = false;
 
 async function stopActive(): Promise<void> {
   if (activeSound) {
@@ -24,6 +25,13 @@ async function stopActive(): Promise<void> {
 }
 
 export async function playSoundFromUri(uri: string, fallbackKey?: string): Promise<boolean> {
+  if (!uri) {
+    if (fallbackKey) await playSound(fallbackKey);
+    return false;
+  }
+
+  if (soundLoading) return false;
+
   try {
     const exists = await recordingFileExists(uri);
     if (!exists) {
@@ -31,18 +39,21 @@ export async function playSoundFromUri(uri: string, fallbackKey?: string): Promi
       return false;
     }
 
+    soundLoading = true;
     await stopActive();
     const { sound } = await Audio.Sound.createAsync({ uri });
+    soundLoading = false;
     activeSound = sound;
     await sound.playAsync();
     sound.setOnPlaybackStatusUpdate((status) => {
       if (status.isLoaded && status.didJustFinish) {
         if (activeSound === sound) activeSound = null;
-        sound.unloadAsync();
+        sound.unloadAsync().catch(() => {});
       }
     });
     return true;
   } catch {
+    soundLoading = false;
     if (fallbackKey) await playSound(fallbackKey);
     return false;
   }
@@ -61,11 +72,14 @@ export async function playLoggedCatSound(
 }
 
 export async function playSound(soundKey: string): Promise<void> {
+  if (soundLoading) return;
   try {
+    soundLoading = true;
     await stopActive();
     const { sound } = await Audio.Sound.createAsync(
       SOUND_MAP[soundKey] ?? SOUND_MAP['default']
     );
+    soundLoading = false;
     activeSound = sound;
     await sound.playAsync();
     sound.setOnPlaybackStatusUpdate((status) => {
@@ -73,10 +87,10 @@ export async function playSound(soundKey: string): Promise<void> {
         if (activeSound === sound) {
           activeSound = null;
         }
-        sound.unloadAsync();
+        sound.unloadAsync().catch(() => {});
       }
     });
   } catch {
-    // silently ignore playback errors
+    soundLoading = false;
   }
 }

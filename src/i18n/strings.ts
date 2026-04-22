@@ -1,4 +1,9 @@
 import { CatPersonaState, InteractionTheme } from '../logic/catPersona';
+import {
+  AnalysisMode,
+  ConfidenceBand,
+  IntentBucket,
+} from '../audio/localAnalysis/types';
 
 export type AppLanguage = 'ja' | 'en';
 
@@ -54,6 +59,51 @@ const MOOD_LABELS: Record<AppLanguage, Record<string, string>> = {
     不満: 'Pushback',
     興味: 'Curious',
     安心: 'Settled',
+  },
+};
+
+const INTENT_LABELS: Record<AppLanguage, Record<IntentBucket, string>> = {
+  ja: {
+    attention: '構って',
+    food_like: 'ごはん気分',
+    playful: '遊びたい',
+    curious: '気になる',
+    unsettled: '少しそわそわ',
+    sleepy: '落ち着き',
+    unknown: '様子見',
+  },
+  en: {
+    attention: 'Attention',
+    food_like: 'Food-like',
+    playful: 'Playful',
+    curious: 'Curious',
+    unsettled: 'Unsettled',
+    sleepy: 'Sleepy',
+    unknown: 'Open-ended',
+  },
+};
+
+const CONFIDENCE_LABELS: Record<AppLanguage, Record<ConfidenceBand, string>> = {
+  ja: {
+    low: 'ひかえめ',
+    medium: 'ほどほど',
+    high: 'くっきり',
+  },
+  en: {
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+  },
+};
+
+const ANALYSIS_MODE_LABELS: Record<AppLanguage, Record<AnalysisMode, string>> = {
+  ja: {
+    local_audio_heuristic: '音の手がかり',
+    local_context_fallback: 'いつもの流れ',
+  },
+  en: {
+    local_audio_heuristic: 'Sound Hint',
+    local_context_fallback: 'Context Hint',
   },
 };
 
@@ -266,6 +316,24 @@ export function getPersonalityLabel(value: string, language: AppLanguage): strin
 
 export function getMoodLabel(value: string, language: AppLanguage): string {
   return MOOD_LABELS[language][value] ?? value;
+}
+
+export function getIntentLabel(value: IntentBucket, language: AppLanguage): string {
+  return INTENT_LABELS[language][value] ?? value;
+}
+
+export function getConfidenceBandLabel(
+  value: ConfidenceBand,
+  language: AppLanguage
+): string {
+  return CONFIDENCE_LABELS[language][value] ?? value;
+}
+
+export function getAnalysisModeLabel(
+  value: AnalysisMode,
+  language: AppLanguage
+): string {
+  return ANALYSIS_MODE_LABELS[language][value] ?? value;
 }
 
 export function getTopicLabel(theme: InteractionTheme, language: AppLanguage): string {

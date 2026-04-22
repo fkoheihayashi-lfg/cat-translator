@@ -12,8 +12,11 @@ export function buildHumanToCatLogEntry(reply: CatReply): NewLogEntry {
     catSubtitle: reply.catSound,
     soundKey: reply.soundKey,
     mood: reply.mood,
-    source: 'mock',
+    source: 'local',
     inputMode: 'text',
+    primaryIntent: undefined,
+    confidenceBand: undefined,
+    analysisMode: undefined,
   };
 }
 
@@ -31,5 +34,8 @@ export function buildCatToHumanLogEntry(
     source: interpretation.source,
     inputMode: interpretation.inputMode,
     recordingUri,
+    primaryIntent: interpretation.primaryIntent,
+    confidenceBand: interpretation.confidenceBand,
+    analysisMode: interpretation.analysisMode,
   };
 }

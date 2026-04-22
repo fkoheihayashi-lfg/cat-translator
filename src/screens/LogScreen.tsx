@@ -10,6 +10,9 @@ import {
 import { RootStackParamList } from '../../App';
 import { LogEntry, useCat } from '../context/CatContext';
 import {
+  getAnalysisModeLabel,
+  getConfidenceBandLabel,
+  getIntentLabel,
   formatLogTime,
   formatWithVars,
   getMoodLabel,
@@ -54,6 +57,14 @@ function EntryCard({
           {entry.mood ? (
             <Text style={styles.metaMood}>{getMoodLabel(entry.mood, language)}</Text>
           ) : null}
+          {entry.direction === 'cat_to_human' && entry.primaryIntent ? (
+            <Text style={styles.metaMood}>{getIntentLabel(entry.primaryIntent, language)}</Text>
+          ) : null}
+          {entry.direction === 'cat_to_human' && entry.confidenceBand ? (
+            <Text style={styles.metaMood}>
+              {getConfidenceBandLabel(entry.confidenceBand, language)}
+            </Text>
+          ) : null}
           <Text style={styles.metaSource}>
             {entry.inputMode === 'recording'
               ? strings.common.recordingMode
@@ -61,6 +72,11 @@ function EntryCard({
           </Text>
         </View>
       )}
+      {entry.direction === 'cat_to_human' && entry.analysisMode ? (
+        <Text style={styles.analysisMode}>
+          {getAnalysisModeLabel(entry.analysisMode, language)}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -222,6 +238,13 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     fontFamily: 'monospace',
     marginLeft: 'auto',
+  },
+  analysisMode: {
+    color: '#586271',
+    fontSize: 10,
+    letterSpacing: 1.2,
+    fontFamily: 'monospace',
+    marginTop: 6,
   },
   empty: {
     alignItems: 'center',

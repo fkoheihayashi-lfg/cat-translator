@@ -1,5 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import {
+  AnalysisMode,
+  ConfidenceBand,
+  IntentBucket,
+} from '../audio/localAnalysis/types';
 import { AppLanguage } from '../i18n/strings';
 import { buildCatPersonaState, CatPersonaState } from '../logic/catPersona';
 
@@ -12,9 +17,12 @@ export type LogEntry = {
   soundKey: string;      // key into SOUND_MAP
   mood: string;          // mood label (e.g. '甘え'), '' if unknown
   createdAt: number;     // Date.now()
-  source: 'mock' | 'ai' | 'yamnet_server';
+  source: 'mock' | 'local';
   inputMode: 'recording' | 'text';
   recordingUri?: string;
+  primaryIntent?: IntentBucket;
+  confidenceBand?: ConfidenceBand;
+  analysisMode?: AnalysisMode;
 };
 
 export type CatProfile = {
@@ -41,6 +49,10 @@ const KEYS = {
 const DEFAULT_PROFILE: CatProfile = { name: '', personality: '甘えん坊' };
 const DEFAULT_LANGUAGE: AppLanguage = 'ja';
 
+function normalizeLogSource(rawSource: unknown): LogEntry['source'] {
+  return rawSource === 'mock' ? 'mock' : 'local';
+}
+
 // This provider is the source of truth for persisted profile/language/log state.
 // Migrate entries written before the LogEntry type was normalised.
 // Old shape: { id, direction, catSound, text, timestamp }
@@ -55,12 +67,15 @@ function migrateEntry(raw: any): LogEntry {
       soundKey:       raw.soundKey ?? 'default',
       mood:           raw.mood ?? '',
       createdAt:      raw.createdAt ?? raw.id ?? Date.now(),
-      source:         raw.source ?? 'mock',
+      source:         normalizeLogSource(raw.source),
       inputMode:      raw.inputMode ?? (raw.direction === 'human_to_cat' ? 'text' : 'recording'),
       recordingUri:
         typeof raw.recordingUri === 'string' && raw.recordingUri.length > 0
           ? raw.recordingUri
           : undefined,
+      primaryIntent: raw.primaryIntent,
+      confidenceBand: raw.confidenceBand,
+      analysisMode: raw.analysisMode,
     };
   }
   return {
@@ -72,12 +87,15 @@ function migrateEntry(raw: any): LogEntry {
     soundKey:      'default',
     mood:          '',
     createdAt:     raw.id            ?? Date.now(),
-    source:        'mock',
+    source:        'local',
     inputMode:     raw.direction === 'human_to_cat' ? 'text' : 'recording',
     recordingUri:
       typeof raw.recordingUri === 'string' && raw.recordingUri.length > 0
         ? raw.recordingUri
         : undefined,
+    primaryIntent: undefined,
+    confidenceBand: undefined,
+    analysisMode: undefined,
   };
 }
 

@@ -123,6 +123,7 @@ export type RunCatAudioAnalysisTransactionOptions = {
   language: AppLanguage;
   profile: CatProfile;
   personaState: CatPersonaState;
+  log?: LogEntryLike[];
   addLog: AddLog;
   delayMs?: number;
   signal?: AbortSignal;
@@ -136,6 +137,7 @@ export async function runCatAudioAnalysisTransaction({
   language,
   profile,
   personaState,
+  log = [],
   addLog,
   delayMs = 1500,
   signal,
@@ -143,20 +145,45 @@ export async function runCatAudioAnalysisTransaction({
   onInterpretation,
   onComplete,
 }: RunCatAudioAnalysisTransactionOptions): Promise<CatInterpretation | null> {
-  const tempRecordingUri = recording?.getURI() ?? undefined;
+  if (!recording) return null;
+
+  const tempRecordingUri = recording.getURI() ?? undefined;
+  let durationMs = 0;
 
   try {
-    await recording?.stopAndUnloadAsync();
-    // Persist first so replay and any server upload both use the same source-of-truth URI.
+    const preStopStatus = await recording.getStatusAsync();
+    if (typeof preStopStatus.durationMillis === 'number') {
+      durationMs = preStopStatus.durationMillis;
+    }
+
+    await recording.stopAndUnloadAsync();
+
+    const finalStatus = await recording.getStatusAsync();
+    if (
+      durationMs <= 0 &&
+      typeof finalStatus.durationMillis === 'number'
+    ) {
+      durationMs = finalStatus.durationMillis;
+    }
+
     const recordingUri = await persistRecordingFile(tempRecordingUri);
+    if (!recordingUri && tempRecordingUri) {
+      // Keep analysis usable even if durable copy fails on a device.
+      durationMs = Math.max(durationMs, 0);
+    }
+    if (finalStatus && finalStatus.canRecord === false && typeof finalStatus.durationMillis === 'number') {
+      durationMs = finalStatus.durationMillis;
+    }
     onStartAnalysis?.();
     await waitMs(delayMs, signal);
 
     const interpretation = await analyzeCatAudio({
       recordingUri,
+      durationMs,
       language,
       profile,
       personaState,
+      log,
     });
 
     addLog(buildCatToHumanLogEntry(interpretation, recordingUri));
