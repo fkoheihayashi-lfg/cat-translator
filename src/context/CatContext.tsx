@@ -7,6 +7,7 @@ import {
 } from '../audio/localAnalysis/types';
 import { AppLanguage } from '../i18n/strings';
 import { buildCatPersonaState, CatPersonaState } from '../logic/catPersona';
+import { HumanToCatIntentId } from '../logic/humanToCatIntents';
 
 export type LogEntry = {
   id: number;
@@ -14,6 +15,8 @@ export type LogEntry = {
   rawText: string;       // cat phonetic sound, e.g. "にゃーっ！"
   translatedText: string; // human-readable translation
   catSubtitle: string;   // display subtitle in result card
+  userText?: string;     // original human input for human -> cat entries
+  humanIntentId?: HumanToCatIntentId;
   soundKey: string;      // key into SOUND_MAP
   mood: string;          // mood label (e.g. '甘え'), '' if unknown
   createdAt: number;     // Date.now()
@@ -64,6 +67,11 @@ function migrateEntry(raw: any): LogEntry {
       rawText:        raw.rawText ?? '',
       translatedText: raw.translatedText ?? '',
       catSubtitle:    raw.catSubtitle ?? raw.rawText ?? '',
+      userText:
+        typeof raw.userText === 'string' && raw.userText.length > 0
+          ? raw.userText
+          : undefined,
+      humanIntentId: raw.humanIntentId,
       soundKey:       raw.soundKey ?? 'default',
       mood:           raw.mood ?? '',
       createdAt:      raw.createdAt ?? raw.id ?? Date.now(),
@@ -84,6 +92,11 @@ function migrateEntry(raw: any): LogEntry {
     rawText:       raw.catSound      ?? '',
     translatedText: raw.text         ?? '',
     catSubtitle:   raw.catSound      ?? '',
+    userText:
+      raw.direction === 'human_to_cat' && typeof raw.userText === 'string' && raw.userText.length > 0
+        ? raw.userText
+        : undefined,
+    humanIntentId: raw.humanIntentId,
     soundKey:      'default',
     mood:          '',
     createdAt:     raw.id            ?? Date.now(),

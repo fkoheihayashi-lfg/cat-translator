@@ -19,7 +19,15 @@ import CatAvatar from '../components/CatAvatar';
 import { useCat } from '../context/CatContext';
 import { getStrings } from '../i18n/strings';
 import { CatReply, SOUND_AVATAR } from '../logic/generateCatReply';
-import { runHumanToCatTextTransaction } from '../logic/textConversation';
+import {
+  getHumanToCatIntentLabel,
+  HUMAN_TO_CAT_INTENTS,
+  HumanToCatIntentId,
+} from '../logic/humanToCatIntents';
+import {
+  runHumanToCatIntentTransaction,
+  runHumanToCatTextTransaction,
+} from '../logic/textConversation';
 import { playLoggedCatSound } from '../utils/playSound';
 
 type Props = {
@@ -61,6 +69,37 @@ export default function SpeakScreen({ navigation }: Props) {
   }, [result]);
 
   const canSend = inputText.trim().length > 0;
+
+  const handleIntentPress = (intentId: HumanToCatIntentId) => {
+    if (uiState === 'loading' || isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    setUiState('loading');
+    setResult(null);
+
+    void (async () => {
+      try {
+        await runHumanToCatIntentTransaction({
+          intentId,
+          language,
+          profile,
+          personaState,
+          log,
+          addLog,
+          onReply: (reply) => {
+            setResult(reply);
+            setUiState('result');
+          },
+          onComplete: () => {
+            isSubmittingRef.current = false;
+          },
+        });
+      } finally {
+        if (isSubmittingRef.current) {
+          isSubmittingRef.current = false;
+        }
+      }
+    })();
+  };
 
   const handleSend = () => {
     if (!canSend || uiState === 'loading' || isSubmittingRef.current) return;
@@ -114,6 +153,31 @@ export default function SpeakScreen({ navigation }: Props) {
           <Text style={styles.subtitle}>{strings.speak.subtitle}</Text>
         </View>
 
+        <View style={styles.quickActionsWrap}>
+          <Text style={styles.sectionLabel}>{strings.speak.quickActions}</Text>
+          <View style={styles.intentGrid}>
+            {HUMAN_TO_CAT_INTENTS.map((intent) => (
+              <TouchableOpacity
+                key={intent.id}
+                style={[styles.intentButton, uiState === 'loading' && styles.intentButtonDisabled]}
+                onPress={() => handleIntentPress(intent.id)}
+                activeOpacity={0.75}
+                disabled={uiState === 'loading'}
+              >
+                <Text
+                  style={[
+                    styles.intentButtonText,
+                    uiState === 'loading' && styles.intentButtonTextDisabled,
+                  ]}
+                >
+                  {getHumanToCatIntentLabel(intent.id, language)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        <Text style={styles.sectionLabel}>{strings.speak.textLabel}</Text>
         <View style={styles.composer}>
           <TextInput
             style={styles.input}
@@ -158,7 +222,12 @@ export default function SpeakScreen({ navigation }: Props) {
             <Text style={styles.catSound}>{result.catSound}</Text>
             <Text style={styles.translatedText}>{result.responseText}</Text>
             <TouchableOpacity
-              onPress={() => playLoggedCatSound(undefined, result.soundKey)}
+              onPress={() =>
+                playLoggedCatSound({
+                  fallbackSoundKey: result.soundKey,
+                  allowSyntheticFallback: true,
+                })
+              }
               activeOpacity={0.75}
             >
               <Text style={styles.replayText}>{strings.common.replayAgain}</Text>
@@ -192,6 +261,49 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 32,
     gap: 24,
+  },
+  quickActionsWrap: {
+    width: '100%',
+    gap: 12,
+  },
+  sectionLabel: {
+    color: '#5d7b70',
+    fontSize: 10,
+    letterSpacing: 2,
+    fontFamily: 'monospace',
+    alignSelf: 'center',
+  },
+  intentGrid: {
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  intentButton: {
+    width: '31%',
+    minHeight: 54,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#355242',
+    backgroundColor: '#141c19',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  intentButtonDisabled: {
+    borderColor: '#2a2a3c',
+    backgroundColor: '#171720',
+  },
+  intentButtonText: {
+    color: '#a0e0c0',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textAlign: 'center',
+  },
+  intentButtonTextDisabled: {
+    color: '#4a4a66',
   },
   composer: {
     width: '100%',

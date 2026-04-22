@@ -7,16 +7,22 @@ import {
   InteractionTheme,
   LogEntryLike,
 } from './catPersona';
+import {
+  getHumanToCatIntentDefinition,
+  HumanToCatIntentId,
+} from './humanToCatIntents';
 
 export type CatReply = {
   catSound: string;
   responseText: string;
   soundKey: string;
   mood: string;
+  humanIntentId?: HumanToCatIntentId;
 };
 
 export type GenerateCatReplyInput = {
   text: string;
+  intentId?: HumanToCatIntentId;
   language?: AppLanguage;
   profile?: CatProfileLike;
   personaState?: CatPersonaState;
@@ -415,6 +421,40 @@ function appendTail(base: string, tail: string): string {
   return `${base} ${tail}`;
 }
 
+function pickBestVariant(
+  variants: Variant[],
+  theme: InteractionTheme,
+  input: GenerateCatReplyInput,
+  seed: number
+): Variant {
+  return variants.reduce((best, variant) => {
+    const bestScore = scoreVariant(best, theme, input, seed);
+    const currentScore = scoreVariant(variant, theme, input, seed);
+    return currentScore > bestScore ? variant : best;
+  }, variants[0]);
+}
+
+function generateCatReplyFromIntent(input: GenerateCatReplyInput): CatReply {
+  const language = input.language ?? 'ja';
+  const intent = getHumanToCatIntentDefinition(input.intentId as HumanToCatIntentId);
+  const personaState = input.personaState;
+  const seed = createSeed(
+    intent.id,
+    language,
+    personaState?.interactionCount ?? 0,
+    personaState?.dominantTheme ?? 'general',
+    input.profile?.personality ?? 'default'
+  );
+  const chosen = pickBestVariant(intent.variants[language], intent.theme, input, seed);
+  const tail = buildPersonalizedTail(intent.theme, input, seed, language);
+
+  return {
+    ...chosen,
+    humanIntentId: intent.id,
+    responseText: appendTail(chosen.responseText, tail),
+  };
+}
+
 function generateCatReplyFromTemplate(input: GenerateCatReplyInput): CatReply {
   const language = input.language ?? 'ja';
   const category = getCategory(input.text, language);
@@ -426,11 +466,7 @@ function generateCatReplyFromTemplate(input: GenerateCatReplyInput): CatReply {
     personaState?.dominantTheme ?? 'general',
     input.profile?.personality ?? 'default'
   );
-  const chosen = category.variants.reduce((best, variant) => {
-    const bestScore = scoreVariant(best, category.theme, input, seed);
-    const currentScore = scoreVariant(variant, category.theme, input, seed);
-    return currentScore > bestScore ? variant : best;
-  }, category.variants[0]);
+  const chosen = pickBestVariant(category.variants, category.theme, input, seed);
   const tail = buildPersonalizedTail(category.theme, input, seed, language);
 
   return {
@@ -440,6 +476,9 @@ function generateCatReplyFromTemplate(input: GenerateCatReplyInput): CatReply {
 }
 
 export async function generateCatReply(input: GenerateCatReplyInput): Promise<CatReply> {
+  if (input.intentId) {
+    return generateCatReplyFromIntent(input);
+  }
   return generateCatReplyFromTemplate(input);
 }
 

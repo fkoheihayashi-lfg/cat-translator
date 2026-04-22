@@ -7,9 +7,10 @@ import {
   GenerateCatReplyInput,
   CatReply,
 } from './generateCatReply';
+import { HumanToCatIntentId } from './humanToCatIntents';
 import { NewLogEntry, buildCatToHumanLogEntry, buildHumanToCatLogEntry } from './logEntries';
 import { persistRecordingFile } from '../utils/recordingStorage';
-import { playSound } from '../utils/playSound';
+import { playSound, playSoundFromUri } from '../utils/playSound';
 import { CatPersonaState, LogEntryLike } from './catPersona';
 
 type AddLog = (entry: NewLogEntry) => void;
@@ -80,8 +81,52 @@ export async function runHumanToCatTextTransaction({
       log,
     };
     const reply = await generateCatReply(replyInput);
-    addLog(buildHumanToCatLogEntry(reply));
+    addLog(buildHumanToCatLogEntry(reply, { type: 'text', userText: normalizedText }));
     onReply?.(reply, normalizedText);
+    await playSound(reply.soundKey);
+    return reply;
+  } finally {
+    onComplete?.();
+  }
+}
+
+export type RunHumanToCatIntentTransactionOptions = {
+  intentId: HumanToCatIntentId;
+  language: AppLanguage;
+  profile: CatProfile;
+  personaState: CatPersonaState;
+  log: LogEntryLike[];
+  addLog: AddLog;
+  onStart?: () => void;
+  onReply?: (reply: CatReply, intentId: HumanToCatIntentId) => void;
+  onComplete?: () => void;
+};
+
+export async function runHumanToCatIntentTransaction({
+  intentId,
+  language,
+  profile,
+  personaState,
+  log,
+  addLog,
+  onStart,
+  onReply,
+  onComplete,
+}: RunHumanToCatIntentTransactionOptions): Promise<CatReply | null> {
+  onStart?.();
+
+  try {
+    const replyInput: GenerateCatReplyInput = {
+      text: intentId,
+      intentId,
+      language,
+      profile,
+      personaState,
+      log,
+    };
+    const reply = await generateCatReply(replyInput);
+    addLog(buildHumanToCatLogEntry(reply, { type: 'intent', intentId }));
+    onReply?.(reply, intentId);
     await playSound(reply.soundKey);
     return reply;
   } finally {
@@ -188,7 +233,9 @@ export async function runCatAudioAnalysisTransaction({
 
     addLog(buildCatToHumanLogEntry(interpretation, recordingUri));
     onInterpretation?.(interpretation, recordingUri);
-    await playSound(interpretation.soundKey);
+    if (recordingUri) {
+      await playSoundFromUri(recordingUri);
+    }
     return interpretation;
   } finally {
     onComplete?.();

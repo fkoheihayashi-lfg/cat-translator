@@ -30,7 +30,13 @@ import {
 import { getAvatarMoodFromInterpretation } from '../logic/analyzeCatAudio';
 import { SOUND_AVATAR } from '../logic/generateCatReply';
 import {
+  getHumanToCatIntentLabel,
+  HUMAN_TO_CAT_INTENTS,
+  HumanToCatIntentId,
+} from '../logic/humanToCatIntents';
+import {
   runCatAudioAnalysisTransaction,
+  runHumanToCatIntentTransaction,
   runHumanToCatTextTransaction,
   startCatRecordingSession,
 } from '../logic/textConversation';
@@ -124,6 +130,35 @@ export default function ConversationScreen({ navigation }: Props) {
   useEffect(() => {
     scrollToBottom(log.length > 0);
   }, [log.length, pendingState]);
+
+  const handleIntentPress = (intentId: HumanToCatIntentId) => {
+    if (pendingState !== 'idle' || actionLockRef.current) return;
+    actionLockRef.current = true;
+    setPermissionError(false);
+    setPendingState('text_loading');
+
+    void (async () => {
+      try {
+        await runHumanToCatIntentTransaction({
+          intentId,
+          language,
+          profile,
+          personaState,
+          log,
+          addLog,
+          onComplete: () => {
+            setPendingState('idle');
+            actionLockRef.current = false;
+          },
+        });
+      } finally {
+        if (actionLockRef.current) {
+          setPendingState('idle');
+          actionLockRef.current = false;
+        }
+      }
+    })();
+  };
 
   const handleSend = () => {
     if (!canSend || pendingState !== 'idle' || actionLockRef.current) return;
@@ -261,6 +296,15 @@ export default function ConversationScreen({ navigation }: Props) {
         ) : (
           log.map((entry) => {
             const isHuman = entry.direction === 'human_to_cat';
+            const humanHeadline = entry.humanIntentId
+              ? getHumanToCatIntentLabel(entry.humanIntentId, language)
+              : entry.userText;
+            const primaryBubbleText =
+              isHuman ? humanHeadline ?? entry.translatedText : entry.translatedText;
+            const secondaryBubbleText =
+              isHuman ? entry.translatedText : undefined;
+            const canReplay =
+              isHuman ? Boolean(entry.soundKey) : Boolean(entry.recordingUri);
             const bubbleMood =
               entry.direction === 'human_to_cat'
                 ? SOUND_AVATAR[entry.soundKey] ?? 'neutral'
@@ -299,8 +343,12 @@ export default function ConversationScreen({ navigation }: Props) {
                   ) : null}
 
                   <Text style={[styles.bubbleText, isHuman && styles.bubbleTextHuman]}>
-                    {entry.translatedText}
+                    {primaryBubbleText}
                   </Text>
+
+                  {secondaryBubbleText ? (
+                    <Text style={styles.humanResponseText}>{secondaryBubbleText}</Text>
+                  ) : null}
 
                   <View style={styles.bubbleMeta}>
                     {entry.mood ? (
@@ -318,15 +366,17 @@ export default function ConversationScreen({ navigation }: Props) {
                         {getConfidenceBandLabel(entry.confidenceBand, language)}
                       </Text>
                     ) : null}
-                    {entry.soundKey ? (
+                    {canReplay ? (
                       <TouchableOpacity
                         onPress={() =>
-                          playLoggedCatSound(
-                            !isHuman ? entry.recordingUri : undefined,
-                            entry.soundKey
-                          )
+                          playLoggedCatSound({
+                            recordingUri: !isHuman ? entry.recordingUri : undefined,
+                            fallbackSoundKey: entry.soundKey,
+                            allowSyntheticFallback: isHuman,
+                          })
                         }
                         activeOpacity={0.75}
+                        disabled={!canReplay}
                       >
                         <Text style={[styles.replayText, isHuman && styles.replayTextHuman]}>
                           {strings.common.replay}
@@ -369,6 +419,31 @@ export default function ConversationScreen({ navigation }: Props) {
       </ScrollView>
 
       <View style={styles.composerWrap}>
+        <Text style={styles.quickActionsLabel}>{strings.speak.quickActions}</Text>
+        <View style={styles.intentGrid}>
+          {HUMAN_TO_CAT_INTENTS.map((intent) => (
+            <TouchableOpacity
+              key={intent.id}
+              style={[
+                styles.intentButton,
+                pendingState !== 'idle' && styles.intentButtonDisabled,
+              ]}
+              onPress={() => handleIntentPress(intent.id)}
+              activeOpacity={0.75}
+              disabled={pendingState !== 'idle'}
+            >
+              <Text
+                style={[
+                  styles.intentButtonText,
+                  pendingState !== 'idle' && styles.intentButtonTextDisabled,
+                ]}
+              >
+                {getHumanToCatIntentLabel(intent.id, language)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         {pendingState === 'recording' && (
           <>
             <Text style={styles.recordingLabel}>{strings.common.recordingActive}</Text>
@@ -605,6 +680,12 @@ const styles = StyleSheet.create({
   bubbleTextHuman: {
     color: '#0e0e14',
   },
+  humanResponseText: {
+    color: '#24463a',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 6,
+  },
   bubbleMeta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -674,6 +755,46 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#1d1d28',
     backgroundColor: '#0e0e14',
+  },
+  quickActionsLabel: {
+    color: '#5d7b70',
+    fontSize: 10,
+    letterSpacing: 2,
+    fontFamily: 'monospace',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  intentGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 12,
+  },
+  intentButton: {
+    width: '31%',
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#355242',
+    backgroundColor: '#141c19',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  intentButtonDisabled: {
+    borderColor: '#2a2a3c',
+    backgroundColor: '#171720',
+  },
+  intentButtonText: {
+    color: '#a0e0c0',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textAlign: 'center',
+  },
+  intentButtonTextDisabled: {
+    color: '#4a4a66',
   },
   recordingLabel: {
     color: '#7fba9f',

@@ -18,6 +18,7 @@ import {
   getMoodLabel,
   getStrings,
 } from '../i18n/strings';
+import { getHumanToCatIntentLabel } from '../logic/humanToCatIntents';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Log'>;
@@ -32,10 +33,15 @@ function EntryCard({
 }) {
   const strings = getStrings(language);
   const isCatToHuman = entry.direction === 'cat_to_human';
+  const headlineText =
+    !isCatToHuman
+      ? entry.humanIntentId
+        ? getHumanToCatIntentLabel(entry.humanIntentId, language)
+        : entry.userText ?? entry.rawText
+      : entry.rawText;
 
   return (
     <View style={styles.card}>
-      {/* Top row: badge + timestamp */}
       <View style={styles.cardTop}>
         <View style={[styles.badge, isCatToHuman ? styles.badgeCat : styles.badgeHuman]}>
           <Text style={[styles.badgeText, isCatToHuman ? styles.badgeTextCat : styles.badgeTextHuman]}>
@@ -45,13 +51,14 @@ function EntryCard({
         <Text style={styles.timestamp}>{formatLogTime(entry.createdAt, language)}</Text>
       </View>
 
-      {/* Cat sound */}
-      <Text style={styles.catSound}>{entry.rawText}</Text>
+      <Text style={styles.catSound}>{headlineText}</Text>
 
-      {/* Translation */}
+      {!isCatToHuman && entry.rawText ? (
+        <Text style={styles.catStyledText}>{entry.rawText}</Text>
+      ) : null}
+
       <Text style={styles.entryText}>{entry.translatedText}</Text>
 
-      {/* Mood + source meta row */}
       {(entry.mood || entry.inputMode) && (
         <View style={styles.metaRow}>
           {entry.mood ? (
@@ -205,6 +212,11 @@ const styles = StyleSheet.create({
   catSound: {
     color: '#e8e8f0',
     fontSize: 20,
+    letterSpacing: 1,
+  },
+  catStyledText: {
+    color: '#8080a8',
+    fontSize: 12,
     letterSpacing: 1,
   },
   entryText: {

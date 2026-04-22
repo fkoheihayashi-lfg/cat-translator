@@ -1,15 +1,23 @@
 import { LogEntry } from '../context/CatContext';
 import { CatInterpretation } from './analyzeCatAudio';
 import { CatReply } from './generateCatReply';
+import { HumanToCatIntentId } from './humanToCatIntents';
 
 export type NewLogEntry = Omit<LogEntry, 'id' | 'createdAt'>;
 
-export function buildHumanToCatLogEntry(reply: CatReply): NewLogEntry {
+export function buildHumanToCatLogEntry(
+  reply: CatReply,
+  source:
+    | { type: 'text'; userText: string }
+    | { type: 'intent'; intentId: HumanToCatIntentId }
+): NewLogEntry {
   return {
     direction: 'human_to_cat',
     rawText: reply.catSound,
     translatedText: reply.responseText,
     catSubtitle: reply.catSound,
+    userText: source.type === 'text' ? source.userText : undefined,
+    humanIntentId: source.type === 'intent' ? source.intentId : undefined,
     soundKey: reply.soundKey,
     mood: reply.mood,
     source: 'local',

@@ -168,6 +168,8 @@ export const STRINGS = {
     speak: {
       title: '話しかける',
       subtitle: '猫に伝えたいことを入力してください',
+      quickActions: 'クイック意図',
+      textLabel: '自由入力',
       inputPlaceholder: '例：大好きだよ、かわいいね',
       loading: '変換中…',
       badge: '猫語',
@@ -258,6 +260,8 @@ export const STRINGS = {
     speak: {
       title: 'Speak',
       subtitle: 'Type something you want to say to your cat',
+      quickActions: 'Quick Actions',
+      textLabel: 'Custom Text',
       inputPlaceholder: 'Example: I love you, you are cute',
       loading: 'Converting…',
       badge: 'Cat speech',

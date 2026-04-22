@@ -8,6 +8,7 @@ import {
   getRecentThemeSummaryText,
   getStrings,
 } from '../i18n/strings';
+import { getHumanToCatIntentLabel } from '../logic/humanToCatIntents';
 import {
   getHomeLogSummaryText,
   getHomeStatusText,
@@ -26,7 +27,11 @@ export default function HomeScreen({ navigation }: Props) {
   const latestHint = latestLog
     ? latestLog.direction === 'cat_to_human'
       ? `${strings.home.latestReceived}: ${latestLog.translatedText}`
-      : `${strings.home.latestSent}: ${latestLog.translatedText}`
+      : `${strings.home.latestSent}: ${
+          latestLog.humanIntentId
+            ? getHumanToCatIntentLabel(latestLog.humanIntentId, language)
+            : latestLog.userText ?? latestLog.translatedText
+        }`
     : `${getBondHintText(personaState, language)} · ${getRecentThemeSummaryText(personaState, language)}`;
 
   const blink = useRef(new Animated.Value(1)).current;

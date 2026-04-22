@@ -212,10 +212,19 @@ export default function TranslateScreen({ navigation }: Props) {
             <Text style={styles.catSubtitle}>{result.catSubtitle}</Text>
             <Text style={styles.translatedText}>{result.translatedText}</Text>
             <TouchableOpacity
-              onPress={() => playLoggedCatSound(resultUri, result.soundKey)}
+              onPress={() =>
+                playLoggedCatSound({
+                  recordingUri: resultUri,
+                  fallbackSoundKey: result.soundKey,
+                  allowSyntheticFallback: false,
+                })
+              }
               activeOpacity={0.75}
+              disabled={!resultUri}
             >
-              <Text style={styles.replayText}>{strings.common.replayAgain}</Text>
+              <Text style={[styles.replayText, !resultUri && styles.replayTextDisabled]}>
+                {strings.common.replayAgain}
+              </Text>
             </TouchableOpacity>
           </Animated.View>
           <TouchableOpacity
@@ -371,6 +380,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 12,
     alignSelf: 'center',
+  },
+  replayTextDisabled: {
+    color: '#4e5a58',
   },
   recSection: {
     alignItems: 'center',

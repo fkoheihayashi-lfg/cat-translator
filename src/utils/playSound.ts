@@ -60,14 +60,28 @@ export async function playSoundFromUri(uri: string, fallbackKey?: string): Promi
 }
 
 export async function playLoggedCatSound(
-  recordingUri: string | undefined,
-  fallbackSoundKey: string
+  options: {
+    recordingUri?: string;
+    fallbackSoundKey: string;
+    allowSyntheticFallback?: boolean;
+  }
 ): Promise<boolean> {
+  const {
+    recordingUri,
+    fallbackSoundKey,
+    allowSyntheticFallback = true,
+  } = options;
+
   if (recordingUri) {
-    return playSoundFromUri(recordingUri, fallbackSoundKey);
+    return playSoundFromUri(
+      recordingUri,
+      allowSyntheticFallback ? fallbackSoundKey : undefined
+    );
   }
 
-  await playSound(fallbackSoundKey);
+  if (allowSyntheticFallback) {
+    await playSound(fallbackSoundKey);
+  }
   return false;
 }
 

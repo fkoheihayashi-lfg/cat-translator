@@ -73,6 +73,6 @@ Durable local cat recordings:
 - Files are copied into app-local document storage under `cat-recordings/`
 - `recordingUri` in the log should point to that durable copy for new recordings
 - If a URI is already pointing at the durable directory, it is reused as-is
-- Older or missing paths fail safely and replay falls back to the synthetic cat sound
+- Older or missing paths fail safely and cat-to-human replay is skipped
 - This is local-only storage and does not yet include cleanup / export / sync behavior
 */
