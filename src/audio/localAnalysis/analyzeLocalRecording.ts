@@ -1,24 +1,45 @@
-import { LOCAL_ANALYSIS_SAFE_RESULT } from './constants';
+import {
+  CLIP_QUALITY_RANK,
+  LEGACY_CLIP_QUALITY_MAP,
+  LOCAL_ANALYSIS_SAFE_RESULT,
+} from './constants';
 import { buildContextFeatures } from './contextFeatures';
 import { extractLocalAudioFeatures } from './featureExtraction';
-import { scoreIntents, toConfidenceBand } from './intentScoring';
+import { scoreIntents } from './intentScoring';
 import { buildInterpretiveReply } from './replyGenerator';
 import {
-  AnalysisMode,
-  IntentScores,
+  ClipQuality,
+  ClipQualityInput,
   LocalAnalysisContext,
   LocalAnalysisResult,
+  ScoreBreakdown,
 } from './types';
 
-function fallbackScores(): IntentScores {
+function normalizeClipQuality(clipQuality: ClipQualityInput): ClipQuality {
+  if (clipQuality === 'clean' || clipQuality === 'noisy' || clipQuality === 'unusable') {
+    return clipQuality;
+  }
+  return LEGACY_CLIP_QUALITY_MAP[clipQuality];
+}
+
+function pickLowerQuality(a: ClipQualityInput, b: ClipQuality): ClipQuality {
+  const normalizedA = normalizeClipQuality(a);
+  return CLIP_QUALITY_RANK[normalizedA] <= CLIP_QUALITY_RANK[b] ? normalizedA : b;
+}
+
+function buildPublicAnalysisMode(): LocalAnalysisResult['analysisMode'] {
+  return 'local_heuristic';
+}
+
+function emptyBreakdown(): ScoreBreakdown {
   return {
-    attention: 0.12,
-    food_like: 0.12,
-    playful: 0.12,
-    curious: 0.12,
-    unsettled: 0.12,
-    sleepy: 0.16,
-    unknown: 0.24,
+    attention_like: { score: 0.11, reasons: [] },
+    food_like: { score: 0.11, reasons: [] },
+    playful: { score: 0.11, reasons: [] },
+    curious: { score: 0.11, reasons: [] },
+    unsettled: { score: 0.11, reasons: [] },
+    sleepy: { score: 0.11, reasons: [] },
+    unknown: { score: 0.34, reasons: ['fallback safe default'] },
   };
 }
 
@@ -29,38 +50,40 @@ export async function analyzeLocalRecording(
   const language = context.language ?? 'ja';
 
   try {
-    const audioExtraction = await extractLocalAudioFeatures(recordingUri, context.durationMs);
+    const extracted = await extractLocalAudioFeatures(recordingUri, context.durationMs);
     const contextFeatures = buildContextFeatures(context);
-    const scored = scoreIntents(
-      audioExtraction.features,
-      contextFeatures,
-      audioExtraction.hasUsableSignal
-    );
-    const confidenceBand = toConfidenceBand(scored.intentScores);
-    const analysisMode: AnalysisMode = audioExtraction.hasUsableSignal
-      ? 'local_audio_heuristic'
-      : 'local_context_fallback';
-
+    const clipQuality = context.clipQuality
+      ? pickLowerQuality(context.clipQuality, extracted.derivedClipQuality)
+      : extracted.derivedClipQuality;
+    const scored = scoreIntents({
+      features: extracted.features,
+      context: contextFeatures,
+      clipQuality,
+      extractionSucceeded: extracted.extractionSucceeded,
+      availableFeatureCount: extracted.availableFeatureCount,
+    });
     const reply = buildInterpretiveReply({
+      language,
       primaryIntent: scored.primaryIntent,
-      intentScores: scored.intentScores,
-      confidenceBand,
-      analysisMode,
-      contextFeatures,
-      context,
+      confidenceBand: scored.confidenceBand,
     });
 
     return {
+      primaryIntent: scored.primaryIntent,
+      secondaryIntents: scored.secondaryIntents,
+      confidenceBand: scored.confidenceBand,
       summaryText: reply.summaryText,
       catSubtitle: reply.catSubtitle,
-      primaryIntent: scored.primaryIntent,
-      confidenceBand,
-      analysisMode,
-      audioFeatures: audioExtraction.features,
-      intentScores: scored.intentScores,
+      analysisMode: buildPublicAnalysisMode(),
+      features: extracted.features,
+      scoreBreakdown: scored.scoreBreakdown,
+      reasons: [...extracted.reasons, ...scored.reasons].slice(0, 5),
     };
   } catch {
     return {
+      primaryIntent: 'unknown',
+      secondaryIntents: [],
+      confidenceBand: 'low',
       summaryText:
         language === 'ja'
           ? LOCAL_ANALYSIS_SAFE_RESULT.summaryTextJa
@@ -69,13 +92,15 @@ export async function analyzeLocalRecording(
         language === 'ja'
           ? LOCAL_ANALYSIS_SAFE_RESULT.subtitleJa
           : LOCAL_ANALYSIS_SAFE_RESULT.subtitleEn,
-      primaryIntent: 'unknown',
-      confidenceBand: 'low',
-      analysisMode: 'local_context_fallback',
-      audioFeatures: {
+      analysisMode: buildPublicAnalysisMode(),
+      features: {
         durationMs: Math.max(0, Math.round(context.durationMs ?? 0)),
+        averageAmplitude: null,
+        peakAmplitude: null,
+        silenceRatio: null,
       },
-      intentScores: fallbackScores(),
+      scoreBreakdown: emptyBreakdown(),
+      reasons: ['local heuristic analysis failed safely'],
     };
   }
 }

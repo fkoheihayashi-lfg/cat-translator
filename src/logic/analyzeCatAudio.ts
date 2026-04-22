@@ -3,12 +3,19 @@ import { analyzeLocalRecording } from '../audio/localAnalysis/analyzeLocalRecord
 import {
   AnalysisMode,
   AudioFeatures,
+  ClipQualityInput,
   ConfidenceBand,
+  EnvironmentTrigger,
   IntentBucket,
-  IntentScores,
+  LocationContext,
+  MealContext,
+  OwnerContext,
+  ScoreBreakdown,
+  ActivityContext,
 } from '../audio/localAnalysis/types';
 import { AppLanguage } from '../i18n/strings';
 import { CatPersonaState, CatProfileLike } from './catPersona';
+import { HourBucket } from '../utils/timeBuckets';
 
 export type CatInterpretation = {
   mood: string;
@@ -21,8 +28,9 @@ export type CatInterpretation = {
   primaryIntent: IntentBucket;
   confidenceBand: ConfidenceBand;
   analysisMode: AnalysisMode;
-  audioFeatures: AudioFeatures;
-  intentScores: IntentScores;
+  features: AudioFeatures;
+  scoreBreakdown: ScoreBreakdown;
+  reasons: string[];
 };
 
 export type AnalyzeCatAudioInput = {
@@ -40,6 +48,13 @@ export type AnalyzeCatAudioInput = {
     createdAt: number;
     inputMode: 'recording' | 'text';
   }>;
+  clipQuality?: ClipQualityInput;
+  timeBucket?: HourBucket;
+  mealContext?: MealContext;
+  ownerContext?: OwnerContext;
+  environmentTrigger?: EnvironmentTrigger;
+  activityContext?: ActivityContext;
+  locationContext?: LocationContext;
 };
 
 export type LocalAnalysisStatus = {
@@ -48,17 +63,17 @@ export type LocalAnalysisStatus = {
 };
 
 const INTENT_TO_MOOD: Record<IntentBucket, string> = {
-  attention: '甘え',
+  attention_like: '甘え',
   food_like: '要求',
   playful: '興味',
   curious: '興味',
   unsettled: '不満',
   sleepy: '安心',
-  unknown: '安心',
+  unknown: '様子見',
 };
 
 const INTENT_TO_SOUND: Record<IntentBucket, string> = {
-  attention: 'love',
+  attention_like: 'love',
   food_like: 'food',
   playful: 'play',
   curious: 'play',
@@ -73,6 +88,7 @@ export const MOOD_AVATAR: Record<string, CatAvatarProps['mood']> = {
   不満: 'upset',
   興味: 'curious',
   安心: 'sleepy',
+  様子見: 'neutral',
 };
 
 export function getAvatarMoodFromInterpretation(
@@ -98,6 +114,13 @@ export async function analyzeCatAudio(
     personaState: input.personaState,
     log: input.log,
     durationMs: input.durationMs,
+    clipQuality: input.clipQuality,
+    timeBucket: input.timeBucket,
+    mealContext: input.mealContext,
+    ownerContext: input.ownerContext,
+    environmentTrigger: input.environmentTrigger,
+    activityContext: input.activityContext,
+    locationContext: input.locationContext,
   });
 
   return {
@@ -111,8 +134,9 @@ export async function analyzeCatAudio(
     primaryIntent: localResult.primaryIntent,
     confidenceBand: localResult.confidenceBand,
     analysisMode: localResult.analysisMode,
-    audioFeatures: localResult.audioFeatures,
-    intentScores: localResult.intentScores,
+    features: localResult.features,
+    scoreBreakdown: localResult.scoreBreakdown,
+    reasons: localResult.reasons,
   };
 }
 

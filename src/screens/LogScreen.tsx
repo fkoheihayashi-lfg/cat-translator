@@ -10,15 +10,12 @@ import {
 import { RootStackParamList } from '../../App';
 import { LogEntry, useCat } from '../context/CatContext';
 import {
-  getAnalysisModeLabel,
-  getConfidenceBandLabel,
-  getIntentLabel,
   formatLogTime,
   formatWithVars,
-  getMoodLabel,
   getStrings,
 } from '../i18n/strings';
 import { getHumanToCatIntentLabel } from '../logic/humanToCatIntents';
+import { playLoggedCatSound } from '../utils/playSound';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Log'>;
@@ -33,12 +30,15 @@ function EntryCard({
 }) {
   const strings = getStrings(language);
   const isCatToHuman = entry.direction === 'cat_to_human';
-  const headlineText =
-    !isCatToHuman
-      ? entry.humanIntentId
+  // cat→human: translatedText primary, rawText subtitle below
+  // human→cat: intent label or userText primary, rawText (cat sound) subtitle below
+  const headlineText = isCatToHuman
+    ? entry.translatedText
+    : entry.humanIntentLabel
+      ?? (entry.humanIntentId
         ? getHumanToCatIntentLabel(entry.humanIntentId, language)
-        : entry.userText ?? entry.rawText
-      : entry.rawText;
+        : entry.userText ?? entry.rawText);
+  const subtitleText = isCatToHuman ? entry.rawText : entry.rawText;
 
   return (
     <View style={styles.card}>
@@ -53,36 +53,23 @@ function EntryCard({
 
       <Text style={styles.catSound}>{headlineText}</Text>
 
-      {!isCatToHuman && entry.rawText ? (
-        <Text style={styles.catStyledText}>{entry.rawText}</Text>
+      {subtitleText ? (
+        <Text style={styles.catStyledText}>{subtitleText}</Text>
       ) : null}
 
-      <Text style={styles.entryText}>{entry.translatedText}</Text>
-
-      {(entry.mood || entry.inputMode) && (
-        <View style={styles.metaRow}>
-          {entry.mood ? (
-            <Text style={styles.metaMood}>{getMoodLabel(entry.mood, language)}</Text>
-          ) : null}
-          {entry.direction === 'cat_to_human' && entry.primaryIntent ? (
-            <Text style={styles.metaMood}>{getIntentLabel(entry.primaryIntent, language)}</Text>
-          ) : null}
-          {entry.direction === 'cat_to_human' && entry.confidenceBand ? (
-            <Text style={styles.metaMood}>
-              {getConfidenceBandLabel(entry.confidenceBand, language)}
-            </Text>
-          ) : null}
-          <Text style={styles.metaSource}>
-            {entry.inputMode === 'recording'
-              ? strings.common.recordingMode
-              : strings.common.textMode}
-          </Text>
-        </View>
-      )}
-      {entry.direction === 'cat_to_human' && entry.analysisMode ? (
-        <Text style={styles.analysisMode}>
-          {getAnalysisModeLabel(entry.analysisMode, language)}
-        </Text>
+      {isCatToHuman && entry.soundKey ? (
+        <TouchableOpacity
+          onPress={() =>
+            playLoggedCatSound({
+              recordingUri: entry.recordingUri,
+              fallbackSoundKey: entry.soundKey,
+              allowSyntheticFallback: false,
+            })
+          }
+          activeOpacity={0.75}
+        >
+          <Text style={styles.replayText}>{strings.common.replay}</Text>
+        </TouchableOpacity>
       ) : null}
     </View>
   );
@@ -224,39 +211,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
   },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 4,
-    borderTopWidth: 1,
-    borderTopColor: '#242430',
-    paddingTop: 8,
-  },
-  metaMood: {
-    color: '#a0e0c0',
-    fontSize: 10,
-    letterSpacing: 2,
-    borderWidth: 1,
-    borderColor: '#2a4a3a',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  metaSource: {
-    color: '#4a4a66',
-    fontSize: 10,
+  replayText: {
+    color: '#7fcfaf',
+    fontSize: 11,
     letterSpacing: 1,
-    fontFamily: 'monospace',
-    marginLeft: 'auto',
-  },
-  analysisMode: {
-    color: '#586271',
-    fontSize: 10,
-    letterSpacing: 1.2,
-    fontFamily: 'monospace',
-    marginTop: 6,
+    marginTop: 4,
   },
   empty: {
     alignItems: 'center',

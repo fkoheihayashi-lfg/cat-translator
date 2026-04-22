@@ -17,6 +17,7 @@ export type LogEntry = {
   catSubtitle: string;   // display subtitle in result card
   userText?: string;     // original human input for human -> cat entries
   humanIntentId?: HumanToCatIntentId;
+  humanIntentLabel?: string;
   soundKey: string;      // key into SOUND_MAP
   mood: string;          // mood label (e.g. '甘え'), '' if unknown
   createdAt: number;     // Date.now()
@@ -72,6 +73,10 @@ function migrateEntry(raw: any): LogEntry {
           ? raw.userText
           : undefined,
       humanIntentId: raw.humanIntentId,
+      humanIntentLabel:
+        typeof raw.humanIntentLabel === 'string' && raw.humanIntentLabel.length > 0
+          ? raw.humanIntentLabel
+          : undefined,
       soundKey:       raw.soundKey ?? 'default',
       mood:           raw.mood ?? '',
       createdAt:      raw.createdAt ?? raw.id ?? Date.now(),
@@ -97,6 +102,10 @@ function migrateEntry(raw: any): LogEntry {
         ? raw.userText
         : undefined,
     humanIntentId: raw.humanIntentId,
+    humanIntentLabel:
+      typeof raw.humanIntentLabel === 'string' && raw.humanIntentLabel.length > 0
+        ? raw.humanIntentLabel
+        : undefined,
     soundKey:      'default',
     mood:          '',
     createdAt:     raw.id            ?? Date.now(),

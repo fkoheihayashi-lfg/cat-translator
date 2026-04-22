@@ -1,7 +1,7 @@
-import { IntentBucket, IntentScores } from './types';
+import { ClipQuality, IntentBucket, IntentScores, LegacyClipQuality } from './types';
 
 export const INTENT_BUCKETS: IntentBucket[] = [
-  'attention',
+  'attention_like',
   'food_like',
   'playful',
   'curious',
@@ -11,20 +11,36 @@ export const INTENT_BUCKETS: IntentBucket[] = [
 ];
 
 export const DEFAULT_INTENT_SCORES: IntentScores = {
-  attention: 0.14,
-  food_like: 0.14,
-  playful: 0.14,
-  curious: 0.14,
-  unsettled: 0.14,
-  sleepy: 0.14,
+  attention_like: 0.08,
+  food_like: 0.08,
+  playful: 0.08,
+  curious: 0.08,
+  unsettled: 0.08,
+  sleepy: 0.08,
   unknown: 0.16,
 };
 
-export const REPEATED_CLUSTER_WINDOW_MS = 2 * 60 * 1000;
+export const MIN_RELIABLE_DURATION_MS = 350;
+export const HIGH_SILENCE_RATIO_THRESHOLD = 0.88;
+export const WEAK_TOP_SCORE_THRESHOLD = 0.24;
+export const CLOSE_SCORE_GAP_THRESHOLD = 0.05;
+
+export const CLIP_QUALITY_RANK: Record<ClipQuality, number> = {
+  unusable: 0,
+  noisy: 1,
+  clean: 2,
+};
+
+export const LEGACY_CLIP_QUALITY_MAP: Record<LegacyClipQuality, ClipQuality> = {
+  unusable: 'unusable',
+  poor: 'noisy',
+  fair: 'noisy',
+  good: 'clean',
+};
 
 export const LOCAL_ANALYSIS_SAFE_RESULT = {
-  summaryTextJa: '今は小さめの声かも。そばにいると落ち着きそう。',
-  summaryTextEn: 'This sounds subtle right now. Staying nearby may help.',
+  summaryTextJa: 'はっきりとは読み切れませんが、小さな呼びかけに聞こえるかもしれません。',
+  summaryTextEn: 'This is hard to read clearly, but it might be a small call.',
   subtitleJa: 'みゅ…',
   subtitleEn: 'mrr...',
 };

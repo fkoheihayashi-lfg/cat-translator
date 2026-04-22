@@ -1,19 +1,45 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { createSeed } from '../../logic/catPersona';
 import { clamp01, safeDiv } from '../../utils/normalization';
-import { AudioFeatures } from './types';
+import {
+  AudioFeatures,
+  ClipQuality,
+} from './types';
 
 export type LocalFeatureExtractionResult = {
   features: AudioFeatures;
-  hasUsableSignal: boolean;
+  extractionSucceeded: boolean;
+  derivedClipQuality: ClipQuality;
+  availableFeatureCount: number;
+  reasons: string[];
 };
 
-function trendFromSeed(seed: number): AudioFeatures['dominantEnergyTrend'] {
-  const trendIndex = Math.abs(seed) % 4;
-  if (trendIndex === 0) return 'rising';
-  if (trendIndex === 1) return 'falling';
-  if (trendIndex === 2) return 'flat';
-  return 'mixed';
+function buildEmptyFeatures(durationMs: number): AudioFeatures {
+  return {
+    durationMs,
+    averageAmplitude: null,
+    peakAmplitude: null,
+    silenceRatio: null,
+  };
+}
+
+function countAvailableFeatures(features: AudioFeatures): number {
+  return [features.averageAmplitude, features.peakAmplitude, features.silenceRatio].filter(
+    (value) => value !== null
+  ).length;
+}
+
+function estimateEstimatedClipQuality(
+  durationMs: number,
+  silenceRatio: number | null,
+  availableFeatureCount: number
+): ClipQuality {
+  if (durationMs < 250) return 'unusable';
+  if (silenceRatio !== null && silenceRatio >= 0.94) return 'unusable';
+  if (availableFeatureCount < 2) return 'noisy';
+  if (durationMs < 1400) return 'noisy';
+  if (silenceRatio !== null && silenceRatio >= 0.74) return 'noisy';
+  return 'clean';
 }
 
 export async function extractLocalAudioFeatures(
@@ -22,59 +48,82 @@ export async function extractLocalAudioFeatures(
 ): Promise<LocalFeatureExtractionResult> {
   const safeDurationMs = Math.max(0, Math.round(durationMs ?? 0));
 
-  if (!recordingUri || safeDurationMs <= 0) {
+  if (!recordingUri) {
     return {
-      features: { durationMs: safeDurationMs },
-      hasUsableSignal: false,
+      features: buildEmptyFeatures(safeDurationMs),
+      extractionSucceeded: false,
+      derivedClipQuality: 'unusable',
+      availableFeatureCount: 0,
+      reasons: ['recording uri missing'],
+    };
+  }
+
+  if (safeDurationMs <= 0) {
+    return {
+      features: buildEmptyFeatures(safeDurationMs),
+      extractionSucceeded: false,
+      derivedClipQuality: 'unusable',
+      availableFeatureCount: 0,
+      reasons: ['recording duration missing'],
     };
   }
 
   try {
     const info = await FileSystem.getInfoAsync(recordingUri);
     const byteSize = info.exists && typeof info.size === 'number' ? info.size : 0;
-    // We do not decode waveform samples here. These are lightweight on-device heuristics
-    // derived from stable local file properties so the app stays offline and replaceable.
+
+    if (byteSize <= 0) {
+      return {
+        features: buildEmptyFeatures(safeDurationMs),
+        extractionSucceeded: false,
+        derivedClipQuality: 'unusable',
+        availableFeatureCount: 0,
+        reasons: ['recording metadata unavailable'],
+      };
+    }
+
+    const seconds = Math.max(0.1, safeDurationMs / 1000);
+    // Phase 1 stays fully local and does not decode waveform samples here.
+    // These values are metadata-derived proxies, not true acoustic measurements.
+    const bytesPerSecondEstimate = safeDiv(byteSize, seconds, 0);
+    const densityEstimate = clamp01((bytesPerSecondEstimate - 2400) / 28000);
+    const durationFactor = clamp01(safeDurationMs / 3200);
     const seed = createSeed(recordingUri, safeDurationMs, byteSize);
+    const jitterA = (Math.abs(seed % 100) / 100) * 0.06;
+    const jitterB = (Math.abs(seed % 71) / 100) * 0.05;
 
-    const seconds = safeDurationMs / 1000;
-    const kbPerSecond = safeDiv(byteSize / 1024, seconds, 12);
-    const durationFactor = clamp01(safeDurationMs / 5500);
-    const density = clamp01((kbPerSecond - 6) / 38);
-    const seedJitter = (Math.abs(seed % 1000) / 1000) * 0.08;
+    const averageAmplitude = clamp01(
+      0.16 + densityEstimate * 0.48 + durationFactor * 0.08 + jitterA
+    );
+    const peakAmplitude = clamp01(averageAmplitude + 0.14 + jitterB);
+    const silenceRatio = clamp01(0.84 - averageAmplitude * 0.5 + (1 - durationFactor) * 0.08);
 
-    const rmsMean = clamp01(0.2 + density * 0.6 + durationFactor * 0.1 + seedJitter);
-    const rmsPeak = clamp01(rmsMean + 0.18 + (Math.abs(seed % 17) / 100) * 0.18);
-    const silenceRatio = clamp01(0.72 - rmsMean * 0.55 + (Math.abs(seed % 9) / 100));
-    const burstCount = Math.max(
-      0,
-      Math.round(seconds * (0.7 + rmsPeak * 1.1 + (1 - silenceRatio) * 0.8))
-    );
-    const dynamicRange = clamp01(rmsPeak - rmsMean + (Math.abs(seed % 7) / 100));
-    const zeroCrossingRateApprox = clamp01(
-      0.16 + density * 0.38 + safeDiv(burstCount, Math.max(1, seconds * 8), 0) * 0.35
-    );
-    const envelopeVariance = clamp01(
-      0.12 + dynamicRange * 0.65 + safeDiv(burstCount, Math.max(1, seconds * 5), 0) * 0.2
-    );
+    const features: AudioFeatures = {
+      durationMs: safeDurationMs,
+      averageAmplitude,
+      peakAmplitude,
+      silenceRatio,
+    };
+    const availableFeatureCount = countAvailableFeatures(features);
 
     return {
-      features: {
-        durationMs: safeDurationMs,
-        rmsMean,
-        rmsPeak,
+      features,
+      extractionSucceeded: true,
+      derivedClipQuality: estimateEstimatedClipQuality(
+        safeDurationMs,
         silenceRatio,
-        burstCount,
-        dynamicRange,
-        zeroCrossingRateApprox,
-        envelopeVariance,
-        dominantEnergyTrend: trendFromSeed(seed),
-      },
-      hasUsableSignal: true,
+        availableFeatureCount
+      ),
+      availableFeatureCount,
+      reasons: ['features estimated locally from recording metadata'],
     };
   } catch {
     return {
-      features: { durationMs: safeDurationMs },
-      hasUsableSignal: false,
+      features: buildEmptyFeatures(safeDurationMs),
+      extractionSucceeded: false,
+      derivedClipQuality: 'unusable',
+      availableFeatureCount: 0,
+      reasons: ['feature extraction failed'],
     };
   }
 }

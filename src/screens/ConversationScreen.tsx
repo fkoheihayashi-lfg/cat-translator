@@ -21,9 +21,6 @@ import { useCat } from '../context/CatContext';
 import {
   formatThreadTime,
   getBondHintText,
-  getConfidenceBandLabel,
-  getIntentLabel,
-  getMoodLabel,
   getRecentThemeSummaryText,
   getStrings,
 } from '../i18n/strings';
@@ -296,15 +293,15 @@ export default function ConversationScreen({ navigation }: Props) {
         ) : (
           log.map((entry) => {
             const isHuman = entry.direction === 'human_to_cat';
-            const humanHeadline = entry.humanIntentId
-              ? getHumanToCatIntentLabel(entry.humanIntentId, language)
-              : entry.userText;
-            const primaryBubbleText =
-              isHuman ? humanHeadline ?? entry.translatedText : entry.translatedText;
-            const secondaryBubbleText =
-              isHuman ? entry.translatedText : undefined;
-            const canReplay =
-              isHuman ? Boolean(entry.soundKey) : Boolean(entry.recordingUri);
+            const humanHeadline = entry.humanIntentLabel
+              ?? (entry.humanIntentId
+                ? getHumanToCatIntentLabel(entry.humanIntentId, language)
+                : entry.userText);
+            // cat→human: translatedText primary, rawText subtitle below
+            // human→cat: humanHeadline primary, rawText (cat sound) subtitle below
+            const primaryText = isHuman ? (humanHeadline ?? entry.rawText) : entry.translatedText;
+            const subtitleText = isHuman ? (humanHeadline ? entry.rawText : undefined) : entry.rawText;
+            const canReplay = isHuman ? Boolean(entry.soundKey) : Boolean(entry.recordingUri);
             const bubbleMood =
               entry.direction === 'human_to_cat'
                 ? SOUND_AVATAR[entry.soundKey] ?? 'neutral'
@@ -331,41 +328,22 @@ export default function ConversationScreen({ navigation }: Props) {
                     </Text>
                   </View>
 
-                  {entry.rawText ? (
+                  <Text style={[styles.bubbleText, isHuman && styles.bubbleTextHuman]}>
+                    {primaryText}
+                  </Text>
+
+                  {subtitleText ? (
                     <Text
                       style={[
                         styles.bubbleSubtitle,
                         isHuman && styles.bubbleSubtitleHuman,
                       ]}
                     >
-                      {entry.rawText}
+                      {subtitleText}
                     </Text>
                   ) : null}
 
-                  <Text style={[styles.bubbleText, isHuman && styles.bubbleTextHuman]}>
-                    {primaryBubbleText}
-                  </Text>
-
-                  {secondaryBubbleText ? (
-                    <Text style={styles.humanResponseText}>{secondaryBubbleText}</Text>
-                  ) : null}
-
                   <View style={styles.bubbleMeta}>
-                    {entry.mood ? (
-                      <Text style={[styles.moodTag, isHuman && styles.moodTagHuman]}>
-                        {getMoodLabel(entry.mood, language)}
-                      </Text>
-                    ) : null}
-                    {!isHuman && entry.primaryIntent ? (
-                      <Text style={styles.analysisTag}>
-                        {getIntentLabel(entry.primaryIntent, language)}
-                      </Text>
-                    ) : null}
-                    {!isHuman && entry.confidenceBand ? (
-                      <Text style={styles.analysisTag}>
-                        {getConfidenceBandLabel(entry.confidenceBand, language)}
-                      </Text>
-                    ) : null}
                     {canReplay ? (
                       <TouchableOpacity
                         onPress={() =>
@@ -376,7 +354,6 @@ export default function ConversationScreen({ navigation }: Props) {
                           })
                         }
                         activeOpacity={0.75}
-                        disabled={!canReplay}
                       >
                         <Text style={[styles.replayText, isHuman && styles.replayTextHuman]}>
                           {strings.common.replay}

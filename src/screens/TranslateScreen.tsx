@@ -38,6 +38,7 @@ type AppState = 'idle' | 'analyzing' | 'result';
 type RecordingState = 'idle' | 'recording';
 
 const BAR_DURATIONS = [280, 340, 220, 380, 260];
+const ANALYZING_HINT_INTERVAL_MS = 1100;
 
 export default function TranslateScreen({ navigation }: Props) {
   const { profile, language, personaState, log, addLog } = useCat();
@@ -48,6 +49,7 @@ export default function TranslateScreen({ navigation }: Props) {
   const [recordingState, setRecordingState] = useState<RecordingState>('idle');
   const [recording, setRecording]           = useState<Audio.Recording | null>(null);
   const [permissionError, setPermissionError] = useState(false);
+  const [analyzingHintIndex, setAnalyzingHintIndex] = useState(0);
   const actionLockRef = useRef(false);
   const recordingAbortRef = useRef<AbortController | null>(null);
 
@@ -111,6 +113,21 @@ export default function TranslateScreen({ navigation }: Props) {
     }
   }, [result]);
 
+  const isAnalyzing = appState === 'analyzing';
+
+  useEffect(() => {
+    if (!isAnalyzing) {
+      setAnalyzingHintIndex(0);
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      setAnalyzingHintIndex((prev) => (prev + 1) % strings.translate.analyzingHints.length);
+    }, ANALYZING_HINT_INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
+  }, [isAnalyzing, strings.translate.analyzingHints.length]);
+
   const handleRecordPress = async () => {
     if (actionLockRef.current || appState === 'analyzing') return;
     actionLockRef.current = true;
@@ -171,11 +188,11 @@ export default function TranslateScreen({ navigation }: Props) {
     }
   };
 
-  const isAnalyzing = appState === 'analyzing';
   const devAnalysisLabel = getLocalAnalysisDebugLabel({
     provider: 'local',
     ready: true,
   });
+  const isMixedResult = result?.primaryIntent === 'unknown';
 
   return (
     <View style={styles.container}>
@@ -195,6 +212,9 @@ export default function TranslateScreen({ navigation }: Props) {
         <View style={styles.card}>
           <ActivityIndicator size="large" color="#a0e0c0" />
           <Text style={styles.analyzingText}>{strings.translate.analyzing}</Text>
+          <Text style={styles.analyzingHint}>
+            {strings.translate.analyzingHints[analyzingHintIndex]}
+          </Text>
         </View>
       )}
 
@@ -209,9 +229,10 @@ export default function TranslateScreen({ navigation }: Props) {
                 {getConfidenceBandLabel(result.confidenceBand, language)}
               </Text>
             </View>
-            <Text style={styles.catSubtitle}>{result.catSubtitle}</Text>
             <Text style={styles.translatedText}>{result.translatedText}</Text>
+            <Text style={styles.catSubtitle}>{result.catSubtitle}</Text>
             <TouchableOpacity
+              style={styles.replayButton}
               onPress={() =>
                 playLoggedCatSound({
                   recordingUri: resultUri,
@@ -223,9 +244,13 @@ export default function TranslateScreen({ navigation }: Props) {
               disabled={!resultUri}
             >
               <Text style={[styles.replayText, !resultUri && styles.replayTextDisabled]}>
-                {strings.common.replayAgain}
+                {strings.translate.replayCta}
               </Text>
             </TouchableOpacity>
+            <Text style={styles.resultHint}>
+              {isMixedResult ? strings.translate.mixedHint : strings.translate.resultHint}
+            </Text>
+            <Text style={styles.savedHint}>{strings.translate.resultSaved}</Text>
           </Animated.View>
           <TouchableOpacity
             style={styles.buttonRepeat}
@@ -359,30 +384,54 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   catSubtitle: {
-    color: '#8080a8',
-    fontSize: 20,
-    letterSpacing: 2,
+    color: '#8d8dad',
+    fontSize: 15,
+    letterSpacing: 1,
+    textAlign: 'center',
   },
   translatedText: {
     color: '#d8d8f0',
-    fontSize: 16,
+    fontSize: 18,
+    fontWeight: '600',
     textAlign: 'center',
-    lineHeight: 26,
+    lineHeight: 28,
   },
   analyzingText: {
-    color: '#6a6a88',
-    fontSize: 13,
-    letterSpacing: 2,
+    color: '#c9c9db',
+    fontSize: 15,
+    textAlign: 'center',
     marginTop: 8,
+  },
+  analyzingHint: {
+    color: '#757593',
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  replayButton: {
+    marginTop: 4,
   },
   replayText: {
     color: '#a0e0c0',
-    fontSize: 13,
+    fontSize: 14,
     marginTop: 12,
     alignSelf: 'center',
   },
   replayTextDisabled: {
     color: '#4e5a58',
+  },
+  resultHint: {
+    color: '#8a8aa6',
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  savedHint: {
+    color: '#5f7d70',
+    fontSize: 11,
+    textAlign: 'center',
+    letterSpacing: 0.6,
   },
   recSection: {
     alignItems: 'center',

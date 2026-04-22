@@ -1,114 +1,126 @@
-import { createSeed } from '../../logic/catPersona';
-import { pickBySeed } from '../../logic/catPersona';
-import { AnalysisMode, ConfidenceBand, EnrichedContextFeatures, IntentBucket, IntentScores, LocalAnalysisContext } from './types';
+import { createSeed, pickBySeed } from '../../logic/catPersona';
+import { AppLanguage } from '../../i18n/strings';
+import { ConfidenceBand, IntentBucket } from './types';
+
+type ReplyGeneratorInput = {
+  language: AppLanguage;
+  primaryIntent: IntentBucket;
+  confidenceBand: ConfidenceBand;
+};
 
 type ReplyShape = {
   summaryText: string;
   catSubtitle: string;
 };
 
-const SUMMARY_POOL = {
+const SUMMARY_BANK: Record<
+  AppLanguage,
+  Record<IntentBucket, Record<ConfidenceBand, string[]>>
+> = {
   ja: {
-    attention: ['今はちょっと構ってほしい気分かも。', 'あなたの気配を近くで感じたいのかもしれません。', 'そばにいてほしい合図に少し近いです。', '「ちょっと見てて」という感じの声かも。', '今は一人でいたくない気分なのかもしれません。'],
-    food_like: ['もしかすると、ごはんのことが少し頭にあるかも。', '少し期待しながら待っている感じがあります。', 'この声は、軽いおねだりにも聞こえます。', 'なんとなく催促っぽいニュアンスが混じっているかも。', '食事の時間が近いなら、それを感じているのかもしれません。'],
-    playful: ['遊びのスイッチが入りかけているかも。', 'ちょっと気分が前に出てきた声っぽいです。', '動きたい空気が少し混ざっていそう。', 'なにか引っかかりを見つけて、興奮しているのかも。', '体を動かしたそうな、少し弾んだ声に聞こえます。'],
-    curious: ['何かを気にして、様子を見ている感じ。', '少し探るように興味を向けていそうです。', '気になるものへ向いた短い呼びかけかも。', 'あたりを確認しながら、小さく声を出している感じ。', '何かに気づいて、じっと見ているのかもしれません。'],
-    unsettled: ['少し落ち着かなさが混ざっているかもしれません。', '今はほんのり気分が揺れているのかも。', '少しだけざわついた空気に聞こえます。', 'なにか気になることがあって、もやもやしているのかも。', '落ち着こうとしているけれど、まだうまくいっていない声かも。'],
-    sleepy: ['今はゆるく落ち着きたい空気かも。', '眠気まじりで、静かにいたいのかもしれません。', '安心して力を抜いている声っぽいです。', 'うとうとしながら、小さく鳴いた感じかも。', 'もう少ししたら眠りにつきそうな、ゆったりした声です。'],
-    unknown: ['短めの反応で、今はまだ読み切れないかも。', '小さな声なので、やわらかく受け取るのがよさそうです。', 'はっきりした意図というより、軽い呼びかけ寄りかも。', 'とりあえず声を出してみた、という感じに近いかもしれません。', '今この瞬間の気分をそのまま出した声のようです。'],
+    attention_like: {
+      low: ['少し構ってほしい声にも聞こえます。'],
+      medium: ['あなたに向けた小さな呼びかけかもしれません。'],
+      high: ['ちょっとした確認の声に近いかもしれません。'],
+    },
+    food_like: {
+      low: ['ごはんのことが少し頭にある声にも聞こえます。'],
+      medium: ['食事どきの空気に少し近いかもしれません。'],
+      high: ['少しごはん寄りの呼びかけに聞こえるかもしれません。'],
+    },
+    playful: {
+      low: ['少し遊びっぽい空気にも聞こえます。'],
+      medium: ['ちょっと気分が弾んでいるのかもしれません。'],
+      high: ['遊びたい気配が少し出ている声かもしれません。'],
+    },
+    curious: {
+      low: ['何かに気づいた声にも聞こえます。'],
+      medium: ['急ぐより、気にして見ている感じかもしれません。'],
+      high: ['「あれは何だろう」という声に少し近いかもしれません。'],
+    },
+    unsettled: {
+      low: ['少しだけ落ち着かなさもありそうです。'],
+      medium: ['今はややそわそわしているのかもしれません。'],
+      high: ['少し居心地の悪さがある時の声かもしれません。'],
+    },
+    sleepy: {
+      low: ['静かで眠そうな空気にも聞こえます。'],
+      medium: ['少しずつ落ち着いてきているのかもしれません。'],
+      high: ['やわらかい低めの気分の声かもしれません。'],
+    },
+    unknown: {
+      low: ['この声はまだ少し混ざって聞こえます。'],
+      medium: ['今のところは開いたまま受け取るのがよさそうです。'],
+      high: ['もう少し手がかりがあると、読みやすくなりそうです。'],
+    },
   },
   en: {
-    attention: ['Feels like they want your attention right now.', 'This sounds like a small call to stay close.', 'Might be a gentle request for your presence.', 'Could be a nudge to let you know they\'re around.', 'Sounds like they\'d like a moment of company.'],
-    food_like: ['Maybe food is on their mind a little.', 'Could be a soft expectant call, maybe around snacks.', 'This has the feel of a small, hopeful ask.', 'Might be a gentle hint that it\'s nearly meal time.', 'Sounds like they\'re thinking about something tasty.'],
-    playful: ['Could be the start of a playful mood.', 'This has a light, ready-to-move energy.', 'Might be a tiny invitation to play.', 'Sounds like something caught their interest.', 'There\'s a bit of a bounce in this one.'],
-    curious: ['This sounds more curious than upset.', 'Feels like a quick check-in about something nearby.', 'Could be a curious little probe.', 'Something nearby probably caught their attention.', 'Sounds like they\'re quietly investigating something.'],
-    unsettled: ['A bit unsettled, maybe they want you nearby.', 'This one has a slightly restless edge.', 'Could be a brief moment of unease.', 'Something might be on their mind right now.', 'Sounds like they\'re not quite comfortable yet.'],
-    sleepy: ['Feels calm, maybe a little sleepy.', 'This sounds like a soft, winding-down call.', 'Might be a cozy, low-energy check-in.', 'Could be a drowsy little murmur.', 'Sounds like they\'re getting ready to settle.'],
-    unknown: ['Hard to read clearly, but still sounds like a little call.', 'This one is subtle — a gentle read fits best.', 'Not fully clear yet, maybe just a quiet hello.', 'Feels more like a passing sound than a strong request.', 'Open to interpretation — something mild and unhurried.'],
+    attention_like: {
+      low: ['Sounds like they may want a little attention.'],
+      medium: ['Feels like this one is meant for you.'],
+      high: ['Might be a small check-in.'],
+    },
+    food_like: {
+      low: ['Sounds like food may be on their mind.'],
+      medium: ['Feels a bit like a meal-time moment.'],
+      high: ['Might be leaning food-related.'],
+    },
+    playful: {
+      low: ['Sounds like a playful kind of moment.'],
+      medium: ['Feels a little lively here.'],
+      high: ['Might be some play energy coming through.'],
+    },
+    curious: {
+      low: ['Sounds like something caught their interest.'],
+      medium: ['Feels more curious than urgent.'],
+      high: ['Might be a small "what\'s that?" moment.'],
+    },
+    unsettled: {
+      low: ['Sounds like something may feel a little off.'],
+      medium: ['Feels slightly unsettled right now.'],
+      high: ['Might be a less comfortable moment.'],
+    },
+    sleepy: {
+      low: ['Sounds like a quiet, sleepy moment.'],
+      medium: ['Feels like they may be winding down.'],
+      high: ['Might be a soft, low-energy moment.'],
+    },
+    unknown: {
+      low: ['This one still feels a bit mixed.'],
+      medium: ['Sounds open-ended for now.'],
+      high: ['Might need a little more context to read cleanly.'],
+    },
   },
-} as const;
+};
 
-const SUBTITLE_POOL = {
+const SUBTITLE_BANK: Record<AppLanguage, Record<IntentBucket, string[]>> = {
   ja: {
-    attention: ['にゃ…', 'みゅ…', 'にゃぁ…'],
-    food_like: ['にゃっ', 'みゃー', 'にゃー？'],
-    playful: ['みゃっ！', 'にゃっ！', 'みゅっ！'],
-    curious: ['にゃ？', 'みゅ？', 'みゃ？'],
-    unsettled: ['むぅ…', 'にゃっ…', 'ふんにゃ'],
-    sleepy: ['ごろ…', 'ふぅ…', 'にゃ…'],
-    unknown: ['みゅ…', 'にゃ…？', 'mrr…'],
+    attention_like: ['にゃ… ここだよ', 'ここにいるよ'],
+    food_like: ['みゃ… ごはん？', 'そろそろかな'],
+    playful: ['みゃ… あそぶ？', 'ちょっと元気'],
+    curious: ['ん… なにかな', 'ちょっと見てる'],
+    unsettled: ['なんだか気になる', '少しそわそわ'],
+    sleepy: ['ん… ねむい', 'しずかだね'],
+    unknown: ['まだはっきりしない', 'ちょっと混ざってる'],
   },
   en: {
-    attention: ['mew...', 'mrr...', 'prrp...'],
-    food_like: ['meow?', 'mraow...', 'mew!'],
-    playful: ['mrrp!', 'mew-mew!', 'prrp!'],
-    curious: ['mew?', 'prrp?', 'mrrp?'],
-    unsettled: ['mrrh...', 'huff-mew.', 'meh...'],
-    sleepy: ['purr...', 'mrr...', 'prrr...'],
-    unknown: ['mrr...', 'mew...', 'prrp...'],
+    attention_like: ['mrrp... over here', "i'm here"],
+    food_like: ['mrr... food?', "maybe it's time"],
+    playful: ['mrrp... play?', 'awake and interested'],
+    curious: ["mm... what's that", 'checking it out'],
+    unsettled: ['something feels off', 'a little uneasy'],
+    sleepy: ['mm... sleepy', 'quiet now'],
+    unknown: ['not clear yet', 'mixed signal'],
   },
-} as const;
+};
 
-function avoidRecentRepetition(
-  candidates: readonly string[],
-  repeatedSummaryHints: string[],
-  seed: number
-): string {
-  const filtered = candidates.filter((line) => !repeatedSummaryHints.includes(line));
-  if (filtered.length > 0) return pickBySeed(filtered, seed);
-  return pickBySeed([...candidates], seed + 1);
-}
-
-export function buildInterpretiveReply(input: {
-  primaryIntent: IntentBucket;
-  intentScores: IntentScores;
-  confidenceBand: ConfidenceBand;
-  analysisMode: AnalysisMode;
-  contextFeatures: EnrichedContextFeatures;
-  context: LocalAnalysisContext;
-}): ReplyShape {
-  const language = input.context.language ?? 'ja';
-  const name = input.context.profile?.name?.trim();
-  const seed = createSeed(
-    input.primaryIntent,
-    input.confidenceBand,
-    input.analysisMode,
-    input.contextFeatures.recentMeowCount,
-    input.contextFeatures.hourBucket,
-    name ?? 'cat'
-  );
-
-  const baseSummary = avoidRecentRepetition(
-    SUMMARY_POOL[language][input.primaryIntent],
-    input.contextFeatures.repeatedSummaryHints,
+export function buildInterpretiveReply(input: ReplyGeneratorInput): ReplyShape {
+  const seed = createSeed(input.language, input.primaryIntent, input.confidenceBand);
+  const summaryText = pickBySeed(
+    SUMMARY_BANK[input.language][input.primaryIntent][input.confidenceBand],
     seed
   );
-
-  const nuance =
-    language === 'ja'
-      ? input.confidenceBand === 'low'
-        ? '今は決めつけず、やわらかく受け取るのがよさそう。'
-        : input.contextFeatures.followsRepeatedCluster
-          ? '続けて呼んでいるなら、少し反応してあげるとよさそう。'
-          : ''
-      : input.confidenceBand === 'low'
-        ? 'Worth keeping an open read on this one.'
-        : input.contextFeatures.followsRepeatedCluster
-          ? 'Worth checking in if this keeps up.'
-          : '';
-
-  const personalization =
-    name && input.primaryIntent !== 'unknown'
-      ? language === 'ja'
-        ? ` ${name}らしい呼びかけにも聞こえます。`
-        : ` That sounds like ${name}.`
-      : '';
-
-  const summaryText = `${baseSummary}${nuance ? ` ${nuance}` : ''}${personalization}`.trim();
-  const catSubtitle = pickBySeed(
-    [...SUBTITLE_POOL[language][input.primaryIntent]],
-    seed + 7
-  );
+  const catSubtitle = pickBySeed(SUBTITLE_BANK[input.language][input.primaryIntent], seed + 11);
 
   return {
     summaryText,

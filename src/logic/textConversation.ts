@@ -7,7 +7,7 @@ import {
   GenerateCatReplyInput,
   CatReply,
 } from './generateCatReply';
-import { HumanToCatIntentId } from './humanToCatIntents';
+import { getHumanToCatIntentLabel, HumanToCatIntentId } from './humanToCatIntents';
 import { NewLogEntry, buildCatToHumanLogEntry, buildHumanToCatLogEntry } from './logEntries';
 import { persistRecordingFile } from '../utils/recordingStorage';
 import { playSound, playSoundFromUri } from '../utils/playSound';
@@ -125,7 +125,13 @@ export async function runHumanToCatIntentTransaction({
       log,
     };
     const reply = await generateCatReply(replyInput);
-    addLog(buildHumanToCatLogEntry(reply, { type: 'intent', intentId }));
+    addLog(
+      buildHumanToCatLogEntry(reply, {
+        type: 'intent',
+        intentId,
+        displayLabel: getHumanToCatIntentLabel(intentId, language),
+      })
+    );
     onReply?.(reply, intentId);
     await playSound(reply.soundKey);
     return reply;
@@ -161,6 +167,14 @@ export async function startCatRecordingSession({
   );
 
   return recording;
+}
+
+async function restorePlaybackAudioMode(): Promise<void> {
+  await Audio.setAudioModeAsync({
+    allowsRecordingIOS: false,
+    playsInSilentModeIOS: true,
+    staysActiveInBackground: false,
+  }).catch(() => {});
 }
 
 export type RunCatAudioAnalysisTransactionOptions = {
@@ -202,6 +216,7 @@ export async function runCatAudioAnalysisTransaction({
     }
 
     await recording.stopAndUnloadAsync();
+    await restorePlaybackAudioMode();
 
     const finalStatus = await recording.getStatusAsync();
     if (
@@ -238,6 +253,7 @@ export async function runCatAudioAnalysisTransaction({
     }
     return interpretation;
   } finally {
+    await restorePlaybackAudioMode();
     onComplete?.();
   }
 }

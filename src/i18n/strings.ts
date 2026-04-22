@@ -52,6 +52,7 @@ const MOOD_LABELS: Record<AppLanguage, Record<string, string>> = {
     不満: '不満',
     興味: '興味',
     安心: '安心',
+    様子見: '様子見',
   },
   en: {
     甘え: 'Affection',
@@ -59,12 +60,13 @@ const MOOD_LABELS: Record<AppLanguage, Record<string, string>> = {
     不満: 'Pushback',
     興味: 'Curious',
     安心: 'Settled',
+    様子見: 'Open-ended',
   },
 };
 
 const INTENT_LABELS: Record<AppLanguage, Record<IntentBucket, string>> = {
   ja: {
-    attention: '構って',
+    attention_like: '構ってほしいかも',
     food_like: 'ごはん気分',
     playful: '遊びたい',
     curious: '気になる',
@@ -73,7 +75,7 @@ const INTENT_LABELS: Record<AppLanguage, Record<IntentBucket, string>> = {
     unknown: '様子見',
   },
   en: {
-    attention: 'Attention',
+    attention_like: 'Attention-like',
     food_like: 'Food-like',
     playful: 'Playful',
     curious: 'Curious',
@@ -98,12 +100,10 @@ const CONFIDENCE_LABELS: Record<AppLanguage, Record<ConfidenceBand, string>> = {
 
 const ANALYSIS_MODE_LABELS: Record<AppLanguage, Record<AnalysisMode, string>> = {
   ja: {
-    local_audio_heuristic: '音の手がかり',
-    local_context_fallback: 'いつもの流れ',
+    local_heuristic: 'ローカル推定',
   },
   en: {
-    local_audio_heuristic: 'Sound Hint',
-    local_context_fallback: 'Context Hint',
+    local_heuristic: 'Local Heuristic',
   },
 };
 
@@ -162,8 +162,17 @@ export const STRINGS = {
       title: 'CAT TRANSLATOR',
       subtitle: 'Cat → Human Interpreter',
       listenAgain: 'もう一度聞かせる',
-      analyzing: '解析中…',
+      analyzing: '今の声をやわらかく読んでいます…',
+      analyzingHints: [
+        '鳴き方の空気をたどっています',
+        'いつもの調子と少し照らし合わせています',
+        'まだ決めつけずに受け取っています',
+      ],
       prompt: '猫の声を聞かせる',
+      resultHint: 'リプレイするか、もう一度聞かせてみてください',
+      resultSaved: 'この読みは会話ログにも残っています',
+      replayCta: '▶ この声をもう一度聞く',
+      mixedHint: 'このまま記録しておくと、あとで流れが見えやすくなります',
     },
     speak: {
       title: '話しかける',
@@ -254,8 +263,17 @@ export const STRINGS = {
       title: 'CAT TRANSLATOR',
       subtitle: 'Cat → Human Interpreter',
       listenAgain: 'Listen Again',
-      analyzing: 'Analyzing…',
+      analyzing: 'Taking a gentle read of this one…',
+      analyzingHints: [
+        'Listening for the overall tone',
+        'Holding it next to recent context',
+        'Keeping the read soft and open',
+      ],
       prompt: 'Let the app hear your cat',
+      resultHint: 'Replay it, or try another little check-in',
+      resultSaved: 'This reading is already tucked into the conversation log',
+      replayCta: '▶ Hear this one again',
+      mixedHint: 'Worth logging, even if this one stays a little mixed',
     },
     speak: {
       title: 'Speak',

@@ -9,7 +9,7 @@ export function buildHumanToCatLogEntry(
   reply: CatReply,
   source:
     | { type: 'text'; userText: string }
-    | { type: 'intent'; intentId: HumanToCatIntentId }
+    | { type: 'intent'; intentId: HumanToCatIntentId; displayLabel: string }
 ): NewLogEntry {
   return {
     direction: 'human_to_cat',
@@ -18,6 +18,7 @@ export function buildHumanToCatLogEntry(
     catSubtitle: reply.catSound,
     userText: source.type === 'text' ? source.userText : undefined,
     humanIntentId: source.type === 'intent' ? source.intentId : undefined,
+    humanIntentLabel: source.type === 'intent' ? source.displayLabel : undefined,
     soundKey: reply.soundKey,
     mood: reply.mood,
     source: 'local',

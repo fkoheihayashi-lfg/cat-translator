@@ -1,88 +1,345 @@
 import { clamp01, normalizeScores } from '../../utils/normalization';
-import { DEFAULT_INTENT_SCORES } from './constants';
-import { AudioFeatures, ConfidenceBand, EnrichedContextFeatures, IntentBucket, IntentScores } from './types';
+import {
+  CLOSE_SCORE_GAP_THRESHOLD,
+  DEFAULT_INTENT_SCORES,
+  HIGH_SILENCE_RATIO_THRESHOLD,
+  MIN_RELIABLE_DURATION_MS,
+  WEAK_TOP_SCORE_THRESHOLD,
+} from './constants';
+import {
+  AudioFeatures,
+  ClipQuality,
+  ConfidenceBand,
+  ContextFeatures,
+  IntentBucket,
+  IntentScoreDetail,
+  ScoreBreakdown,
+} from './types';
 
-function dominantIntent(intentScores: IntentScores): { primaryIntent: IntentBucket; topScore: number; secondScore: number } {
-  const sorted = (Object.entries(intentScores) as Array<[IntentBucket, number]>).sort(
-    (a, b) => b[1] - a[1]
-  );
-  const primary = sorted[0] ?? ['unknown', 0];
-  const second = sorted[1] ?? ['unknown', 0];
+type ScoreIntentsInput = {
+  features: AudioFeatures;
+  context: ContextFeatures;
+  clipQuality: ClipQuality;
+  extractionSucceeded: boolean;
+  availableFeatureCount: number;
+};
+
+type ScoredCandidate = {
+  intent: IntentBucket;
+  score: number;
+};
+
+export type IntentScoringResult = {
+  primaryIntent: IntentBucket;
+  secondaryIntents: IntentBucket[];
+  confidenceBand: ConfidenceBand;
+  scoreBreakdown: ScoreBreakdown;
+  reasons: string[];
+};
+
+function createBreakdown(): ScoreBreakdown {
   return {
-    primaryIntent: primary[0],
-    topScore: primary[1],
-    secondScore: second[1],
+    attention_like: { score: DEFAULT_INTENT_SCORES.attention_like, reasons: [] },
+    food_like: { score: DEFAULT_INTENT_SCORES.food_like, reasons: [] },
+    playful: { score: DEFAULT_INTENT_SCORES.playful, reasons: [] },
+    curious: { score: DEFAULT_INTENT_SCORES.curious, reasons: [] },
+    unsettled: { score: DEFAULT_INTENT_SCORES.unsettled, reasons: [] },
+    sleepy: { score: DEFAULT_INTENT_SCORES.sleepy, reasons: [] },
+    unknown: { score: DEFAULT_INTENT_SCORES.unknown, reasons: [] },
   };
 }
 
-export function toConfidenceBand(scores: IntentScores): ConfidenceBand {
-  const { topScore, secondScore } = dominantIntent(scores);
-  const spread = topScore - secondScore;
-  if (topScore >= 0.43 && spread >= 0.18) return 'high';
-  if (topScore >= 0.32 && spread >= 0.1) return 'medium';
+function bump(
+  breakdown: ScoreBreakdown,
+  intent: IntentBucket,
+  amount: number,
+  reason: string
+): void {
+  breakdown[intent].score += amount;
+  breakdown[intent].reasons.push(reason);
+}
+
+function rankedCandidates(scoreBreakdown: ScoreBreakdown): ScoredCandidate[] {
+  return (Object.entries(scoreBreakdown) as Array<[IntentBucket, IntentScoreDetail]>)
+    .map(([intent, detail]) => ({ intent, score: detail.score }))
+    .sort((a, b) => b.score - a.score);
+}
+
+function normalizeBreakdown(scoreBreakdown: ScoreBreakdown): ScoreBreakdown {
+  const normalizedScores = normalizeScores(
+    (Object.keys(scoreBreakdown) as IntentBucket[]).reduce<Record<IntentBucket, number>>(
+      (acc, intent) => {
+        acc[intent] = scoreBreakdown[intent].score;
+        return acc;
+      },
+      {} as Record<IntentBucket, number>
+    )
+  );
+
+  return (Object.keys(scoreBreakdown) as IntentBucket[]).reduce<ScoreBreakdown>((acc, intent) => {
+    acc[intent] = {
+      score: normalizedScores[intent],
+      reasons: scoreBreakdown[intent].reasons,
+    };
+    return acc;
+  }, createBreakdown());
+}
+
+function toConfidenceBand(
+  primaryIntent: IntentBucket,
+  topScore: number,
+  gap: number,
+  clipQuality: ClipQuality,
+  availableFeatureCount: number
+): ConfidenceBand {
+  if (primaryIntent === 'unknown') return 'low';
+  if (clipQuality === 'noisy' && gap < 0.12) return 'low';
+  if (topScore >= 0.42 && gap >= 0.14 && clipQuality === 'clean' && availableFeatureCount >= 3) {
+    return 'high';
+  }
+  if (topScore >= 0.31 && gap >= 0.08 && clipQuality !== 'unusable' && availableFeatureCount >= 2) {
+    return 'medium';
+  }
   return 'low';
 }
 
-export function scoreIntents(
-  audio: AudioFeatures,
-  context: EnrichedContextFeatures,
-  hasUsableSignal: boolean
-): { intentScores: IntentScores; primaryIntent: IntentBucket } {
-  const scores: IntentScores = { ...DEFAULT_INTENT_SCORES };
+function applyFeatureHeuristics(
+  breakdown: ScoreBreakdown,
+  features: AudioFeatures,
+  context: ContextFeatures
+): void {
+  const durationMs = features.durationMs;
+  const averageAmplitude = features.averageAmplitude ?? 0;
+  const peakAmplitude = features.peakAmplitude ?? 0;
+  const silenceRatio = features.silenceRatio ?? 0.5;
 
-  const durationSec = audio.durationMs / 1000;
-  const rmsMean = audio.rmsMean ?? 0;
-  const rmsPeak = audio.rmsPeak ?? 0;
-  const silence = audio.silenceRatio ?? 0.5;
-  const burstCount = audio.burstCount ?? 0;
-  const dynamicRange = audio.dynamicRange ?? 0;
-  const zcr = audio.zeroCrossingRateApprox ?? 0;
-  const envelopeVariance = audio.envelopeVariance ?? 0;
-
-  scores.attention += context.recentAttentionPattern * 0.32;
-  scores.attention += context.followsRepeatedCluster ? 0.16 : 0;
-  scores.attention += burstCount >= 3 && durationSec < 3.5 ? 0.12 : 0;
-
-  scores.food_like += context.recentFoodPattern * 0.46;
-  scores.food_like += context.hourBucket === 'morning' || context.hourBucket === 'evening' ? 0.09 : 0;
-  scores.food_like += burstCount >= 4 ? 0.08 : 0;
-
-  scores.playful += burstCount >= 5 ? 0.22 : 0;
-  scores.playful += zcr >= 0.42 ? 0.18 : 0;
-  scores.playful += envelopeVariance >= 0.5 ? 0.16 : 0;
-
-  scores.curious += durationSec >= 1.2 && durationSec <= 4.2 ? 0.16 : 0;
-  scores.curious += audio.dominantEnergyTrend === 'mixed' ? 0.18 : 0;
-  scores.curious += zcr >= 0.3 && zcr < 0.58 ? 0.14 : 0;
-
-  scores.unsettled += rmsPeak >= 0.68 ? 0.2 : 0;
-  scores.unsettled += dynamicRange >= 0.34 ? 0.16 : 0;
-  scores.unsettled += silence <= 0.3 ? 0.08 : 0;
-
-  scores.sleepy += context.hourBucket === 'night' ? 0.16 : 0;
-  scores.sleepy += silence >= 0.58 ? 0.2 : 0;
-  scores.sleepy += rmsMean <= 0.38 ? 0.12 : 0;
-  scores.sleepy += audio.dominantEnergyTrend === 'falling' ? 0.12 : 0;
-
-  if (!hasUsableSignal || durationSec <= 0.25) {
-    scores.unknown += 0.38;
-  } else {
-    scores.unknown += clamp01(0.22 - (rmsMean + dynamicRange) * 0.2);
+  if (durationMs >= 400 && durationMs <= 2600) {
+    bump(breakdown, 'attention_like', 0.08, 'short to medium call length');
+    bump(breakdown, 'food_like', 0.05, 'brief request-like duration');
+    bump(breakdown, 'curious', 0.06, 'short exploratory clip');
   }
 
-  if (context.conversationStreak >= 3 && context.hourBucket === 'night') {
-    scores.sleepy += 0.06;
+  if (averageAmplitude >= 0.2 && averageAmplitude <= 0.58) {
+    bump(breakdown, 'attention_like', 0.06, 'moderate average amplitude');
   }
 
-  const normalized = normalizeScores(scores);
-  const dominant = dominantIntent(normalized);
-  const primaryIntent =
-    dominant.topScore < 0.26 || dominant.topScore - dominant.secondScore < 0.04
-      ? 'unknown'
-      : dominant.primaryIntent;
+  if (averageAmplitude >= 0.42) {
+    bump(breakdown, 'playful', 0.08, 'livelier average amplitude');
+    bump(breakdown, 'unsettled', 0.06, 'raised overall intensity');
+  }
+
+  if (averageAmplitude <= 0.3) {
+    bump(breakdown, 'sleepy', 0.12, 'soft average amplitude');
+  }
+
+  if (peakAmplitude >= 0.48) {
+    bump(breakdown, 'food_like', 0.04, 'clear peak moments');
+  }
+
+  if (peakAmplitude >= 0.6) {
+    bump(breakdown, 'playful', 0.08, 'sharper local peaks');
+  }
+
+  if (peakAmplitude >= 0.68) {
+    bump(breakdown, 'unsettled', 0.16, 'more abrupt peak energy');
+  }
+
+  if (silenceRatio >= 0.45 && silenceRatio <= 0.82) {
+    bump(breakdown, 'curious', 0.06, 'pauses suggest intermittent interest');
+  }
+
+  if (silenceRatio >= 0.72) {
+    bump(breakdown, 'sleepy', 0.16, 'more silence than sustained vocalizing');
+  }
+
+  if (silenceRatio <= 0.28) {
+    bump(breakdown, 'unsettled', 0.12, 'little silence across the clip');
+  }
+
+  if (context.timeBucket === 'night') {
+    bump(breakdown, 'sleepy', 0.16, 'late-hour context');
+  }
+
+  if (context.mealContext === 'meal_window') {
+    bump(breakdown, 'food_like', 0.22, 'meal-time context');
+  }
+
+  if (context.mealContext === 'after_meal') {
+    bump(breakdown, 'food_like', 0.04, 'food may still be on their mind');
+  }
+
+  if (context.ownerContext === 'nearby' || context.ownerContext === 'recent_interaction') {
+    bump(breakdown, 'attention_like', 0.14, 'owner-presence context');
+  }
+
+  if (context.ownerContext === 'recently_returned') {
+    bump(breakdown, 'attention_like', 0.18, 'owner just came back');
+  }
+
+  if (context.ownerContext === 'recently_left') {
+    bump(breakdown, 'unsettled', 0.1, 'owner may have just left');
+  }
+
+  if (context.environmentTrigger === 'food_prep') {
+    bump(breakdown, 'food_like', 0.16, 'food-related environmental cue');
+  }
+
+  if (context.environmentTrigger === 'toy') {
+    bump(breakdown, 'playful', 0.18, 'toy-related environmental cue');
+  }
+
+  if (context.environmentTrigger === 'door' || context.environmentTrigger === 'outside_noise') {
+    bump(breakdown, 'curious', 0.12, 'attention pulled by something nearby');
+  }
+
+  if (context.environmentTrigger === 'sudden_noise') {
+    bump(breakdown, 'unsettled', 0.18, 'sudden environmental change');
+  }
+
+  if (context.activityContext === 'playing') {
+    bump(breakdown, 'playful', 0.2, 'already in an active play context');
+  }
+
+  if (context.activityContext === 'exploring') {
+    bump(breakdown, 'curious', 0.18, 'active exploration context');
+  }
+
+  if (context.activityContext === 'resting' || context.activityContext === 'settling') {
+    bump(breakdown, 'sleepy', 0.14, 'rest-oriented activity context');
+  }
+
+  if (context.activityContext === 'waiting') {
+    bump(breakdown, 'attention_like', 0.06, 'waiting behavior can sound request-like');
+  }
+
+  if (context.locationContext === 'food_area') {
+    bump(breakdown, 'food_like', 0.14, 'food-area location context');
+  }
+
+  if (context.locationContext === 'window' || context.locationContext === 'doorway') {
+    bump(breakdown, 'curious', 0.1, 'watchful location context');
+  }
+
+  if (context.locationContext === 'bed') {
+    bump(breakdown, 'sleepy', 0.12, 'resting-place location context');
+  }
+
+  if (context.locationContext === 'shared_space') {
+    bump(breakdown, 'attention_like', 0.06, 'shared-space closeness context');
+  }
+
+  if (context.recentAttentionLikeCount >= 2) {
+    bump(breakdown, 'attention_like', 0.12, 'recent history leans attention-like');
+  }
+
+  if (context.recentFoodLikeCount >= 1) {
+    bump(breakdown, 'food_like', 0.09, 'recent history leans food-like');
+  }
+
+  if (context.recentPlayfulCount >= 1) {
+    bump(breakdown, 'playful', 0.07, 'recent history leans playful');
+  }
+
+  if (context.recentCuriousCount >= 1) {
+    bump(breakdown, 'curious', 0.05, 'recent history leans curious');
+  }
+
+  if (context.recentUnsettledCount >= 1) {
+    bump(breakdown, 'unsettled', 0.06, 'recent history leans unsettled');
+  }
+
+  if (context.recentSleepyCount >= 1) {
+    bump(breakdown, 'sleepy', 0.07, 'recent history leans sleepy');
+  }
+}
+
+export function scoreIntents(input: ScoreIntentsInput): IntentScoringResult {
+  const breakdown = createBreakdown();
+  const reasons: string[] = [];
+
+  applyFeatureHeuristics(breakdown, input.features, input.context);
+
+  if (!input.extractionSucceeded) {
+    bump(breakdown, 'unknown', 0.34, 'feature extraction did not complete cleanly');
+  }
+
+  if (input.availableFeatureCount < 2) {
+    bump(breakdown, 'unknown', 0.18, 'too few usable local features');
+  }
+
+  if (input.clipQuality === 'noisy') {
+    bump(breakdown, 'unknown', 0.14, 'clip quality looks limited');
+  }
+
+  if (input.clipQuality === 'unusable') {
+    bump(breakdown, 'unknown', 0.4, 'clip quality is unusable');
+  }
+
+  const normalizedBreakdown = normalizeBreakdown(breakdown);
+  const ranked = rankedCandidates(normalizedBreakdown);
+  const top = ranked[0] ?? { intent: 'unknown' as IntentBucket, score: 0 };
+  const second = ranked[1] ?? { intent: 'unknown' as IntentBucket, score: 0 };
+  const scoreGap = top.score - second.score;
+
+  let primaryIntent = top.intent;
+
+  if (input.clipQuality === 'unusable') {
+    primaryIntent = 'unknown';
+    reasons.push('clip quality was unusable');
+  }
+
+  if (!input.extractionSucceeded) {
+    primaryIntent = 'unknown';
+    reasons.push('feature extraction failed');
+  }
+
+  if (input.features.durationMs < MIN_RELIABLE_DURATION_MS) {
+    primaryIntent = 'unknown';
+    reasons.push('clip was too short for a reliable local read');
+  }
+
+  if (
+    input.features.silenceRatio !== null &&
+    input.features.silenceRatio >= HIGH_SILENCE_RATIO_THRESHOLD
+  ) {
+    primaryIntent = 'unknown';
+    reasons.push('clip was mostly silence');
+  }
+
+  if (top.score < WEAK_TOP_SCORE_THRESHOLD) {
+    primaryIntent = 'unknown';
+    reasons.push('top intent score stayed weak');
+  }
+
+  if (scoreGap < CLOSE_SCORE_GAP_THRESHOLD && !input.context.hasStrongContext) {
+    primaryIntent = 'unknown';
+    reasons.push('top candidates were too close without strong context');
+  }
+
+  const confidenceBand = toConfidenceBand(
+    primaryIntent,
+    top.score,
+    clamp01(scoreGap),
+    input.clipQuality,
+    input.availableFeatureCount
+  );
+
+  const secondaryIntents = ranked
+    .filter((candidate) => candidate.intent !== primaryIntent && candidate.intent !== 'unknown')
+    .slice(0, 2)
+    .map((candidate) => candidate.intent);
+
+  if (primaryIntent !== 'unknown') {
+    reasons.push(
+      ...normalizedBreakdown[primaryIntent].reasons.slice(0, 3)
+    );
+  }
 
   return {
-    intentScores: normalized,
     primaryIntent,
+    secondaryIntents,
+    confidenceBand,
+    scoreBreakdown: normalizedBreakdown,
+    reasons: reasons.slice(0, 4),
   };
 }

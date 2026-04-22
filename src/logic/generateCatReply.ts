@@ -437,6 +437,7 @@ function pickBestVariant(
 function generateCatReplyFromIntent(input: GenerateCatReplyInput): CatReply {
   const language = input.language ?? 'ja';
   const intent = getHumanToCatIntentDefinition(input.intentId as HumanToCatIntentId);
+  if (!intent) return generateCatReplyFromTemplate(input);
   const personaState = input.personaState;
   const seed = createSeed(
     intent.id,
