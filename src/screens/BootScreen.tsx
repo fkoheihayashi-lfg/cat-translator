@@ -20,23 +20,23 @@ export default function BootScreen({ navigation }: Props) {
 
   useEffect(() => {
     const fade = (val: Animated.Value, delay: number) =>
-      Animated.timing(val, { toValue: 1, duration: 400, delay, useNativeDriver: true });
+      Animated.timing(val, { toValue: 1, duration: 280, delay, useNativeDriver: true });
 
     Animated.sequence([
       Animated.parallel([
-        fade(systemLabel, 300),
-        fade(mainTitle,   800),
-        fade(subtitle,   1400),
-        fade(statusLine, 2000),
+        fade(systemLabel, 160),
+        fade(mainTitle,   520),
+        fade(subtitle,    900),
+        fade(statusLine, 1240),
       ]),
       Animated.timing(screenOpacity, {
         toValue: 0,
-        duration: 400,
-        delay: 2800,
+        duration: 280,
+        delay: 1820,
         useNativeDriver: true,
       }),
     ]).start(() => navigation.replace('Home'));
-  }, []);
+  }, [mainTitle, navigation, screenOpacity, statusLine, subtitle, systemLabel]);
 
   return (
     <Animated.View style={[styles.container, { opacity: screenOpacity }]}>

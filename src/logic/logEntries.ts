@@ -46,5 +46,6 @@ export function buildCatToHumanLogEntry(
     primaryIntent: interpretation.primaryIntent,
     confidenceBand: interpretation.confidenceBand,
     analysisMode: interpretation.analysisMode,
+    summaryText: interpretation.summaryText,
   };
 }

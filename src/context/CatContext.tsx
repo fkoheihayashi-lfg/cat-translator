@@ -27,6 +27,7 @@ export type LogEntry = {
   primaryIntent?: IntentBucket;
   confidenceBand?: ConfidenceBand;
   analysisMode?: AnalysisMode;
+  summaryText?: string;
 };
 
 export type CatProfile = {
@@ -89,6 +90,10 @@ function migrateEntry(raw: any): LogEntry {
       primaryIntent: raw.primaryIntent,
       confidenceBand: raw.confidenceBand,
       analysisMode: raw.analysisMode,
+      summaryText:
+        typeof raw.summaryText === 'string' && raw.summaryText.length > 0
+          ? raw.summaryText
+          : undefined,
     };
   }
   return {
@@ -118,6 +123,10 @@ function migrateEntry(raw: any): LogEntry {
     primaryIntent: undefined,
     confidenceBand: undefined,
     analysisMode: undefined,
+    summaryText:
+      raw.direction === 'cat_to_human' && typeof raw.text === 'string' && raw.text.length > 0
+        ? raw.text
+        : undefined,
   };
 }
 

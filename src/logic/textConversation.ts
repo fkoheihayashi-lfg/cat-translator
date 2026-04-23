@@ -41,6 +41,15 @@ function waitMs(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+function triggerReplyPlayback(soundKey: string): void {
+  void playSound(soundKey).catch(() => {});
+}
+
+function triggerRecordingPlayback(recordingUri?: string): void {
+  if (!recordingUri) return;
+  void playSoundFromUri(recordingUri).catch(() => {});
+}
+
 export type RunHumanToCatTextTransactionOptions = {
   text: string;
   language: AppLanguage;
@@ -83,7 +92,7 @@ export async function runHumanToCatTextTransaction({
     const reply = await generateCatReply(replyInput);
     addLog(buildHumanToCatLogEntry(reply, { type: 'text', userText: normalizedText }));
     onReply?.(reply, normalizedText);
-    await playSound(reply.soundKey);
+    triggerReplyPlayback(reply.soundKey);
     return reply;
   } finally {
     onComplete?.();
@@ -133,7 +142,7 @@ export async function runHumanToCatIntentTransaction({
       })
     );
     onReply?.(reply, intentId);
-    await playSound(reply.soundKey);
+    triggerReplyPlayback(reply.soundKey);
     return reply;
   } finally {
     onComplete?.();
@@ -248,9 +257,7 @@ export async function runCatAudioAnalysisTransaction({
 
     addLog(buildCatToHumanLogEntry(interpretation, recordingUri));
     onInterpretation?.(interpretation, recordingUri);
-    if (recordingUri) {
-      await playSoundFromUri(recordingUri);
-    }
+    triggerRecordingPlayback(recordingUri);
     return interpretation;
   } finally {
     await restorePlaybackAudioMode();

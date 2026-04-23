@@ -90,10 +90,18 @@ function toConfidenceBand(
   topScore: number,
   gap: number,
   clipQuality: ClipQuality,
-  availableFeatureCount: number
+  availableFeatureCount: number,
+  strongFeatureReasonCount: number,
+  genericReasonCount: number
 ): ConfidenceBand {
   if (primaryIntent === 'unknown') return 'low';
   if (clipQuality === 'noisy' && gap < 0.12) return 'low';
+  if (strongFeatureReasonCount === 0 || genericReasonCount > strongFeatureReasonCount + 1) {
+    if (topScore >= 0.4 && gap >= 0.12 && clipQuality === 'clean' && availableFeatureCount >= 3) {
+      return 'medium';
+    }
+    return 'low';
+  }
   if (topScore >= 0.42 && gap >= 0.14 && clipQuality === 'clean' && availableFeatureCount >= 3) {
     return 'high';
   }
@@ -101,6 +109,16 @@ function toConfidenceBand(
     return 'medium';
   }
   return 'low';
+}
+
+function isGenericReason(reason: string): boolean {
+  return (
+    reason.includes('context') ||
+    reason.includes('history') ||
+    reason.includes('location') ||
+    reason.includes('meal') ||
+    reason.includes('late-hour')
+  );
 }
 
 function applyFeatureHeuristics(
@@ -115,7 +133,7 @@ function applyFeatureHeuristics(
 
   if (durationMs >= 400 && durationMs <= 2600) {
     bump(breakdown, 'attention_like', 0.08, 'short to medium call length');
-    bump(breakdown, 'food_like', 0.05, 'brief request-like duration');
+    bump(breakdown, 'food_like', 0.03, 'brief request-like duration');
     bump(breakdown, 'curious', 0.06, 'short exploratory clip');
   }
 
@@ -129,11 +147,11 @@ function applyFeatureHeuristics(
   }
 
   if (averageAmplitude <= 0.3) {
-    bump(breakdown, 'sleepy', 0.12, 'soft average amplitude');
+    bump(breakdown, 'sleepy', 0.08, 'soft average amplitude');
   }
 
   if (peakAmplitude >= 0.48) {
-    bump(breakdown, 'food_like', 0.04, 'clear peak moments');
+    bump(breakdown, 'food_like', 0.02, 'clear peak moments');
   }
 
   if (peakAmplitude >= 0.6) {
@@ -149,7 +167,7 @@ function applyFeatureHeuristics(
   }
 
   if (silenceRatio >= 0.72) {
-    bump(breakdown, 'sleepy', 0.16, 'more silence than sustained vocalizing');
+    bump(breakdown, 'sleepy', 0.1, 'more silence than sustained vocalizing');
   }
 
   if (silenceRatio <= 0.28) {
@@ -157,15 +175,15 @@ function applyFeatureHeuristics(
   }
 
   if (context.timeBucket === 'night') {
-    bump(breakdown, 'sleepy', 0.16, 'late-hour context');
+    bump(breakdown, 'sleepy', 0.09, 'late-hour context');
   }
 
   if (context.mealContext === 'meal_window') {
-    bump(breakdown, 'food_like', 0.22, 'meal-time context');
+    bump(breakdown, 'food_like', 0.13, 'meal-time context');
   }
 
   if (context.mealContext === 'after_meal') {
-    bump(breakdown, 'food_like', 0.04, 'food may still be on their mind');
+    bump(breakdown, 'food_like', 0.02, 'food may still be on their mind');
   }
 
   if (context.ownerContext === 'nearby' || context.ownerContext === 'recent_interaction') {
@@ -205,7 +223,7 @@ function applyFeatureHeuristics(
   }
 
   if (context.activityContext === 'resting' || context.activityContext === 'settling') {
-    bump(breakdown, 'sleepy', 0.14, 'rest-oriented activity context');
+    bump(breakdown, 'sleepy', 0.08, 'rest-oriented activity context');
   }
 
   if (context.activityContext === 'waiting') {
@@ -213,7 +231,7 @@ function applyFeatureHeuristics(
   }
 
   if (context.locationContext === 'food_area') {
-    bump(breakdown, 'food_like', 0.14, 'food-area location context');
+    bump(breakdown, 'food_like', 0.08, 'food-area location context');
   }
 
   if (context.locationContext === 'window' || context.locationContext === 'doorway') {
@@ -221,7 +239,7 @@ function applyFeatureHeuristics(
   }
 
   if (context.locationContext === 'bed') {
-    bump(breakdown, 'sleepy', 0.12, 'resting-place location context');
+    bump(breakdown, 'sleepy', 0.07, 'resting-place location context');
   }
 
   if (context.locationContext === 'shared_space') {
@@ -232,8 +250,8 @@ function applyFeatureHeuristics(
     bump(breakdown, 'attention_like', 0.12, 'recent history leans attention-like');
   }
 
-  if (context.recentFoodLikeCount >= 1) {
-    bump(breakdown, 'food_like', 0.09, 'recent history leans food-like');
+  if (context.recentFoodLikeCount >= 2) {
+    bump(breakdown, 'food_like', 0.05, 'recent history leans food-like');
   }
 
   if (context.recentPlayfulCount >= 1) {
@@ -248,8 +266,8 @@ function applyFeatureHeuristics(
     bump(breakdown, 'unsettled', 0.06, 'recent history leans unsettled');
   }
 
-  if (context.recentSleepyCount >= 1) {
-    bump(breakdown, 'sleepy', 0.07, 'recent history leans sleepy');
+  if (context.recentSleepyCount >= 2) {
+    bump(breakdown, 'sleepy', 0.05, 'recent history leans sleepy');
   }
 }
 
@@ -280,6 +298,10 @@ export function scoreIntents(input: ScoreIntentsInput): IntentScoringResult {
   const top = ranked[0] ?? { intent: 'unknown' as IntentBucket, score: 0 };
   const second = ranked[1] ?? { intent: 'unknown' as IntentBucket, score: 0 };
   const scoreGap = top.score - second.score;
+  const topReasons = normalizedBreakdown[top.intent].reasons;
+  const secondReasons = normalizedBreakdown[second.intent]?.reasons ?? [];
+  const topGenericReasonCount = topReasons.filter(isGenericReason).length;
+  const topStrongFeatureReasonCount = topReasons.length - topGenericReasonCount;
 
   let primaryIntent = top.intent;
 
@@ -316,12 +338,24 @@ export function scoreIntents(input: ScoreIntentsInput): IntentScoringResult {
     reasons.push('top candidates were too close without strong context');
   }
 
+  if (
+    primaryIntent !== 'unknown' &&
+    scoreGap < 0.1 &&
+    topGenericReasonCount > topStrongFeatureReasonCount &&
+    secondReasons.length >= topReasons.length
+  ) {
+    primaryIntent = 'unknown';
+    reasons.push('weak generic context outweighed clearer signal');
+  }
+
   const confidenceBand = toConfidenceBand(
     primaryIntent,
     top.score,
     clamp01(scoreGap),
     input.clipQuality,
-    input.availableFeatureCount
+    input.availableFeatureCount,
+    topStrongFeatureReasonCount,
+    topGenericReasonCount
   );
 
   const secondaryIntents = ranked

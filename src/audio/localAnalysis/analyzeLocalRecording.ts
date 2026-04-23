@@ -66,6 +66,7 @@ export async function analyzeLocalRecording(
       language,
       primaryIntent: scored.primaryIntent,
       confidenceBand: scored.confidenceBand,
+      secondaryIntents: scored.secondaryIntents,
     });
 
     return {

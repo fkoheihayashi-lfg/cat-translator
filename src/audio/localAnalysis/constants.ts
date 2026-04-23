@@ -22,8 +22,8 @@ export const DEFAULT_INTENT_SCORES: IntentScores = {
 
 export const MIN_RELIABLE_DURATION_MS = 350;
 export const HIGH_SILENCE_RATIO_THRESHOLD = 0.88;
-export const WEAK_TOP_SCORE_THRESHOLD = 0.24;
-export const CLOSE_SCORE_GAP_THRESHOLD = 0.05;
+export const WEAK_TOP_SCORE_THRESHOLD = 0.26;
+export const CLOSE_SCORE_GAP_THRESHOLD = 0.06;
 
 export const CLIP_QUALITY_RANK: Record<ClipQuality, number> = {
   unusable: 0,

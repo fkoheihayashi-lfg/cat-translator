@@ -12,6 +12,8 @@ import { LogEntry, useCat } from '../context/CatContext';
 import {
   formatLogTime,
   formatWithVars,
+  getConfidenceBandLabel,
+  getIntentLabel,
   getStrings,
 } from '../i18n/strings';
 import { getHumanToCatIntentLabel } from '../logic/humanToCatIntents';
@@ -33,12 +35,21 @@ function EntryCard({
   // cat→human: translatedText primary, rawText subtitle below
   // human→cat: intent label or userText primary, rawText (cat sound) subtitle below
   const headlineText = isCatToHuman
-    ? entry.translatedText
+    ? ''
     : entry.humanIntentLabel
       ?? (entry.humanIntentId
         ? getHumanToCatIntentLabel(entry.humanIntentId, language)
         : entry.userText ?? entry.rawText);
   const subtitleText = isCatToHuman ? entry.rawText : entry.rawText;
+  const catSummaryText = isCatToHuman ? entry.summaryText ?? entry.translatedText : undefined;
+  const intentMeta =
+    isCatToHuman && entry.primaryIntent
+      ? `${getIntentLabel(entry.primaryIntent, language)} · ${
+          entry.confidenceBand
+            ? getConfidenceBandLabel(entry.confidenceBand, language)
+            : ''
+        }`.replace(/ · $/, '')
+      : '';
 
   return (
     <View style={styles.card}>
@@ -51,7 +62,15 @@ function EntryCard({
         <Text style={styles.timestamp}>{formatLogTime(entry.createdAt, language)}</Text>
       </View>
 
-      <Text style={styles.catSound}>{headlineText}</Text>
+      {headlineText ? <Text style={styles.catSound}>{headlineText}</Text> : null}
+
+      {intentMeta ? (
+        <Text style={styles.analysisMeta}>{intentMeta}</Text>
+      ) : null}
+
+      {isCatToHuman && catSummaryText ? (
+        <Text style={styles.summaryText}>{catSummaryText}</Text>
+      ) : null}
 
       {subtitleText ? (
         <Text style={styles.catStyledText}>{subtitleText}</Text>
@@ -205,6 +224,17 @@ const styles = StyleSheet.create({
     color: '#8080a8',
     fontSize: 12,
     letterSpacing: 1,
+  },
+  analysisMeta: {
+    color: '#7fcfaf',
+    fontSize: 11,
+    letterSpacing: 0.8,
+    marginTop: 2,
+  },
+  summaryText: {
+    color: '#b6b6cc',
+    fontSize: 13,
+    lineHeight: 19,
   },
   entryText: {
     color: '#9090a8',
