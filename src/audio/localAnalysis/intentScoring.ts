@@ -121,6 +121,10 @@ function isGenericReason(reason: string): boolean {
   );
 }
 
+function hasNoiseDisturbanceContext(context: ContextFeatures): boolean {
+  return String(context.environmentTrigger) === 'after_noise';
+}
+
 function applyFeatureHeuristics(
   breakdown: ScoreBreakdown,
   features: AudioFeatures,
@@ -198,22 +202,6 @@ function applyFeatureHeuristics(
     bump(breakdown, 'unsettled', 0.1, 'owner may have just left');
   }
 
-  if (context.environmentTrigger === 'food_prep') {
-    bump(breakdown, 'food_like', 0.16, 'food-related environmental cue');
-  }
-
-  if (context.environmentTrigger === 'toy') {
-    bump(breakdown, 'playful', 0.18, 'toy-related environmental cue');
-  }
-
-  if (context.environmentTrigger === 'door' || context.environmentTrigger === 'outside_noise') {
-    bump(breakdown, 'curious', 0.12, 'attention pulled by something nearby');
-  }
-
-  if (context.environmentTrigger === 'sudden_noise') {
-    bump(breakdown, 'unsettled', 0.18, 'sudden environmental change');
-  }
-
   if (context.activityContext === 'playing') {
     bump(breakdown, 'playful', 0.2, 'already in an active play context');
   }
@@ -244,6 +232,19 @@ function applyFeatureHeuristics(
 
   if (context.locationContext === 'shared_space') {
     bump(breakdown, 'attention_like', 0.06, 'shared-space closeness context');
+  }
+
+  if (
+    hasNoiseDisturbanceContext(context) &&
+    (
+      context.locationContext === 'bed' ||
+      String(context.locationContext) === 'sofa' ||
+      context.activityContext === 'resting' ||
+      context.activityContext === 'settling'
+    )
+  ) {
+    bump(breakdown, 'unsettled', 0.18, 'recent noise disturbance');
+    bump(breakdown, 'sleepy', -0.04, 'noise disturbance tempers rest-context sleepy read');
   }
 
   if (context.recentAttentionLikeCount >= 2) {
