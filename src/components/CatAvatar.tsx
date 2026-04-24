@@ -4,6 +4,7 @@ import { useCat } from '../context/CatContext';
 export type CatAvatarProps = {
   mood: 'happy' | 'hungry' | 'curious' | 'sleepy' | 'upset' | 'neutral';
   size?: 'small' | 'large';
+  showLabel?: boolean;
 };
 
 const MOOD_DATA: Record<CatAvatarProps['mood'], { emoji: string; ja: string; en: string; color: string }> = {
@@ -15,7 +16,11 @@ const MOOD_DATA: Record<CatAvatarProps['mood'], { emoji: string; ja: string; en:
   neutral: { emoji: '（・ω・）',    ja: 'ふつう',      en: 'neutral',  color: '#888888' },
 };
 
-export default function CatAvatar({ mood, size = 'large' }: CatAvatarProps) {
+export default function CatAvatar({
+  mood,
+  size = 'large',
+  showLabel = true,
+}: CatAvatarProps) {
   const { language } = useCat();
   const { emoji, ja, en, color } = MOOD_DATA[mood];
   const label = language === 'en' ? en : ja;
@@ -24,7 +29,7 @@ export default function CatAvatar({ mood, size = 'large' }: CatAvatarProps) {
       <Text style={[styles.emoji, size === 'small' ? styles.emojiSmall : styles.emojiLarge]}>
         {emoji}
       </Text>
-      <Text style={[styles.label, { color }]}>{label}</Text>
+      {showLabel ? <Text style={[styles.label, { color }]}>{label}</Text> : null}
     </View>
   );
 }

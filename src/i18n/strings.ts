@@ -92,9 +92,9 @@ const CONFIDENCE_LABELS: Record<AppLanguage, Record<ConfidenceBand, string>> = {
     high: 'くっきり',
   },
   en: {
-    low: 'Low',
-    medium: 'Medium',
-    high: 'High',
+    low: 'a hunch',
+    medium: 'fairly sure',
+    high: 'pretty sure',
   },
 };
 

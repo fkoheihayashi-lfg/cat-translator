@@ -16,7 +16,6 @@ import { useCat } from '../context/CatContext';
 import {
   getConfidenceBandLabel,
   getIntentLabel,
-  getMoodLabel,
   getStrings,
 } from '../i18n/strings';
 import {
@@ -29,6 +28,7 @@ import {
   startCatRecordingSession,
 } from '../logic/textConversation';
 import { playLoggedCatSound } from '../utils/playSound';
+import type { ConfidenceBand, IntentBucket } from '../audio/localAnalysis/types';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Translate'>;
@@ -39,6 +39,35 @@ type RecordingState = 'idle' | 'recording';
 
 const BAR_DURATIONS = [280, 340, 220, 380, 260];
 const ANALYZING_HINT_INTERVAL_MS = 1100;
+
+// Retro glyph per intent — visual only, not translated
+const INTENT_GLYPH: Record<IntentBucket, string> = {
+  attention_like: '◐',
+  food_like: '◓',
+  playful: '◈',
+  curious: '◇',
+  unsettled: '◌',
+  sleepy: '☾',
+  unknown: '◯',
+};
+
+// Muted per-intent accent for the glyph in the chip
+const INTENT_CHIP_COLOR: Record<IntentBucket, string> = {
+  attention_like: '#b06890',
+  food_like: '#9a8050',
+  playful: '#8868a0',
+  curious: '#5888a8',
+  unsettled: '#986848',
+  sleepy: '#7060a0',
+  unknown: '#5c5c80',
+};
+
+// Moon phase chars for confidence — not a meter
+const CONFIDENCE_GLYPH: Record<ConfidenceBand, string> = {
+  low: '○',
+  medium: '◑',
+  high: '◕',
+};
 
 export default function TranslateScreen({ navigation }: Props) {
   const { profile, language, personaState, log, addLog } = useCat();
@@ -53,31 +82,23 @@ export default function TranslateScreen({ navigation }: Props) {
   const actionLockRef = useRef(false);
   const recordingAbortRef = useRef<AbortController | null>(null);
 
-  // Pulse animation for REC button
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
-
-  // Waveform bar animations
   const barAnims = useRef(BAR_DURATIONS.map(() => new Animated.Value(4))).current;
   const barLoops = useRef<Animated.CompositeAnimation[]>([]);
-
-  // Result card fade-in
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Audio mode on mount
   useEffect(() => {
     Audio.setAudioModeAsync({
       playsInSilentModeIOS: true,
       allowsRecordingIOS: false,
       staysActiveInBackground: false,
     });
-
     return () => {
       recordingAbortRef.current?.abort();
     };
   }, []);
 
-  // Pulse + waveform lifecycle
   useEffect(() => {
     if (recordingState === 'recording') {
       pulseLoop.current = Animated.loop(
@@ -87,7 +108,6 @@ export default function TranslateScreen({ navigation }: Props) {
         ])
       );
       pulseLoop.current.start();
-
       barLoops.current = barAnims.map((anim, i) =>
         Animated.loop(
           Animated.sequence([
@@ -105,11 +125,10 @@ export default function TranslateScreen({ navigation }: Props) {
     }
   }, [recordingState]);
 
-  // Fade in result card
   useEffect(() => {
     if (result !== null) {
       fadeAnim.setValue(0);
-      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+      Animated.timing(fadeAnim, { toValue: 1, duration: 480, useNativeDriver: true }).start();
     }
   }, [result]);
 
@@ -120,11 +139,9 @@ export default function TranslateScreen({ navigation }: Props) {
       setAnalyzingHintIndex(0);
       return;
     }
-
     const intervalId = setInterval(() => {
       setAnalyzingHintIndex((prev) => (prev + 1) % strings.translate.analyzingHints.length);
     }, ANALYZING_HINT_INTERVAL_MS);
-
     return () => clearInterval(intervalId);
   }, [isAnalyzing, strings.translate.analyzingHints.length]);
 
@@ -136,12 +153,8 @@ export default function TranslateScreen({ navigation }: Props) {
       setPermissionError(false);
       try {
         const nextRecording = await startCatRecordingSession({
-          onPermissionDenied: () => {
-            setPermissionError(true);
-          },
-          onPermissionGranted: () => {
-            setPermissionError(false);
-          },
+          onPermissionDenied: () => { setPermissionError(true); },
+          onPermissionGranted: () => { setPermissionError(false); },
         });
         if (!nextRecording) return;
         setRecording(nextRecording);
@@ -188,10 +201,7 @@ export default function TranslateScreen({ navigation }: Props) {
     }
   };
 
-  const devAnalysisLabel = getLocalAnalysisDebugLabel({
-    provider: 'local',
-    ready: true,
-  });
+  const devAnalysisLabel = getLocalAnalysisDebugLabel({ provider: 'local', ready: true });
   const isMixedResult = result?.primaryIntent === 'unknown';
 
   return (
@@ -208,6 +218,7 @@ export default function TranslateScreen({ navigation }: Props) {
         {!!devAnalysisLabel && <Text style={styles.devStatus}>{devAnalysisLabel}</Text>}
       </View>
 
+      {/* Analyzing state */}
       {isAnalyzing && (
         <View style={styles.card}>
           <ActivityIndicator size="large" color="#a0e0c0" />
@@ -218,21 +229,60 @@ export default function TranslateScreen({ navigation }: Props) {
         </View>
       )}
 
+      {/* Result card — Version A: avatar → intent chip → hero text → subtitle → hairline → confidence + replay */}
       {appState === 'result' && result && (
-          <>
-          <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
-            <CatAvatar mood={getAvatarMoodFromInterpretation(result)} size="large" />
-            <Text style={styles.moodBadge}>{getMoodLabel(result.mood, language)}</Text>
-            <View style={styles.metaRow}>
-              <Text style={styles.metaPill}>{getIntentLabel(result.primaryIntent, language)}</Text>
-              <Text style={styles.metaPill}>
+        <>
+          <Animated.View style={[styles.card, styles.resultCard, { opacity: fadeAnim }]}>
+
+            {/* Corner bracket accents */}
+            <View style={[styles.corner, { top: 14, left: 14, borderTopWidth: 1, borderLeftWidth: 1 }]} />
+            <View style={[styles.corner, { top: 14, right: 14, borderTopWidth: 1, borderRightWidth: 1 }]} />
+            <View style={[styles.corner, { bottom: 14, left: 14, borderBottomWidth: 1, borderLeftWidth: 1 }]} />
+            <View style={[styles.corner, { bottom: 14, right: 14, borderBottomWidth: 1, borderRightWidth: 1 }]} />
+
+            {/* Avatar — no label, mood conveys state */}
+            <CatAvatar
+              mood={getAvatarMoodFromInterpretation(result)}
+              size="large"
+              showLabel={false}
+            />
+
+            {/* Intent chip — quiet pill, glyph + lowercase label */}
+            <View style={styles.intentChip}>
+              <Text style={[styles.intentGlyph, { color: INTENT_CHIP_COLOR[result.primaryIntent] }]}>
+                {INTENT_GLYPH[result.primaryIntent]}
+              </Text>
+              <Text style={styles.intentLabel}>
+                {getIntentLabel(result.primaryIntent, language).toLowerCase()}
+              </Text>
+            </View>
+
+            {/* summaryText — the hero */}
+            <Text style={styles.heroText}>{result.translatedText}</Text>
+
+            {/* catSubtitle — italic flavor layer */}
+            <Text style={styles.subtitleItalic}>"{result.catSubtitle}"</Text>
+
+            {/* Mixed hint — only when read stays open */}
+            {isMixedResult && (
+              <Text style={styles.mixedHint}>{strings.translate.mixedHint}</Text>
+            )}
+
+            {/* Hairline separator */}
+            <View style={styles.hairline} />
+
+            {/* Confidence — moon glyph + soft word, no percentage */}
+            <View style={styles.confidenceRow}>
+              <Text style={styles.confidenceMoon}>
+                {CONFIDENCE_GLYPH[result.confidenceBand]}
+              </Text>
+              <Text style={styles.confidenceWord}>
                 {getConfidenceBandLabel(result.confidenceBand, language)}
               </Text>
             </View>
-            <Text style={styles.translatedText}>{result.translatedText}</Text>
-            <Text style={styles.catSubtitle}>{result.catSubtitle}</Text>
+
+            {/* Replay — muted text link */}
             <TouchableOpacity
-              style={styles.replayButton}
               onPress={() =>
                 playLoggedCatSound({
                   recordingUri: resultUri,
@@ -240,18 +290,19 @@ export default function TranslateScreen({ navigation }: Props) {
                   allowSyntheticFallback: false,
                 })
               }
-              activeOpacity={0.75}
+              activeOpacity={0.6}
               disabled={!resultUri}
             >
-              <Text style={[styles.replayText, !resultUri && styles.replayTextDisabled]}>
+              <Text
+                style={[styles.replayLink, !resultUri && styles.replayLinkDisabled]}
+                numberOfLines={1}
+              >
                 {strings.translate.replayCta}
               </Text>
             </TouchableOpacity>
-            <Text style={styles.resultHint}>
-              {isMixedResult ? strings.translate.mixedHint : strings.translate.resultHint}
-            </Text>
-            <Text style={styles.savedHint}>{strings.translate.resultSaved}</Text>
+
           </Animated.View>
+
           <TouchableOpacity
             style={styles.buttonRepeat}
             onPress={() => { setAppState('idle'); setResultUri(undefined); }}
@@ -341,10 +392,12 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     marginTop: 2,
   },
+
+  // Shared card base (analyzing + result)
   card: {
     width: '100%',
     backgroundColor: '#1a1a26',
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: '#2a2a3c',
     padding: 28,
@@ -353,49 +406,133 @@ const styles = StyleSheet.create({
     minHeight: 140,
     justifyContent: 'center',
   },
+
+  // Result-only card overrides — Version A layout
+  resultCard: {
+    paddingTop: 36,
+    paddingBottom: 28,
+    paddingHorizontal: 28,
+    gap: 0,
+    justifyContent: 'flex-start',
+    minHeight: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+
+  // Corner bracket accents
+  corner: {
+    position: 'absolute',
+    width: 13,
+    height: 13,
+    borderColor: '#30304a',
+  },
+
+  // Intent chip
+  intentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: 7,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: '#1e1c2e',
+    borderWidth: 1,
+    borderColor: '#2c2a42',
+    marginTop: 18,
+    marginBottom: 18,
+  },
+  intentGlyph: {
+    fontSize: 13,
+    lineHeight: 16,
+  },
+  intentLabel: {
+    color: '#7878a8',
+    fontSize: 11,
+    letterSpacing: 0.8,
+    fontFamily: 'monospace',
+  },
+
+  // summaryText — hero
+  heroText: {
+    color: '#e4e4f0',
+    fontSize: 22,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 32,
+    letterSpacing: 0.1,
+    marginBottom: 12,
+  },
+
+  // catSubtitle — italic flavor
+  subtitleItalic: {
+    color: '#9090b8',
+    fontSize: 15,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    lineHeight: 22,
+    letterSpacing: 0.2,
+    opacity: 0.88,
+  },
+
+  // Mixed / unknown hint
+  mixedHint: {
+    color: '#5a5a80',
+    fontSize: 11,
+    textAlign: 'center',
+    lineHeight: 17,
+    marginTop: 10,
+    paddingHorizontal: 4,
+  },
+
+  // Hairline
+  hairline: {
+    width: '100%',
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#2a2a3c',
+    marginTop: 24,
+    marginBottom: 14,
+  },
+
+  // Confidence row
+  confidenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    marginBottom: 10,
+  },
+  confidenceMoon: {
+    color: '#5888a8',
+    fontSize: 12,
+    lineHeight: 15,
+  },
+  confidenceWord: {
+    color: '#5888a8',
+    fontSize: 11,
+    letterSpacing: 0.6,
+    fontFamily: 'monospace',
+  },
+
+  // Replay text link
+  replayLink: {
+    color: '#5070a0',
+    fontSize: 11,
+    textAlign: 'center',
+    letterSpacing: 0.4,
+  },
+  replayLinkDisabled: {
+    color: '#303048',
+  },
+
   cardPlaceholder: {
     width: '100%',
     minHeight: 140,
   },
-  moodBadge: {
-    color: '#a0e0c0',
-    fontSize: 12,
-    letterSpacing: 3,
-    borderWidth: 1,
-    borderColor: '#a0e0c0',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  metaRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  metaPill: {
-    color: '#7fcfaf',
-    fontSize: 10,
-    letterSpacing: 1.2,
-    borderWidth: 1,
-    borderColor: '#355242',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    overflow: 'hidden',
-  },
-  catSubtitle: {
-    color: '#8d8dad',
-    fontSize: 15,
-    letterSpacing: 1,
-    textAlign: 'center',
-  },
-  translatedText: {
-    color: '#d8d8f0',
-    fontSize: 18,
-    fontWeight: '600',
-    textAlign: 'center',
-    lineHeight: 28,
-  },
+
   analyzingText: {
     color: '#c9c9db',
     fontSize: 15,
@@ -408,31 +545,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
   },
-  replayButton: {
-    marginTop: 4,
-  },
-  replayText: {
-    color: '#a0e0c0',
-    fontSize: 14,
-    marginTop: 12,
-    alignSelf: 'center',
-  },
-  replayTextDisabled: {
-    color: '#4e5a58',
-  },
-  resultHint: {
-    color: '#8a8aa6',
-    fontSize: 12,
-    textAlign: 'center',
-    lineHeight: 18,
-    marginTop: 4,
-  },
-  savedHint: {
-    color: '#5f7d70',
-    fontSize: 11,
-    textAlign: 'center',
-    letterSpacing: 0.6,
-  },
+
   recSection: {
     alignItems: 'center',
     gap: 8,

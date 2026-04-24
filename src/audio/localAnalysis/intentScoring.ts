@@ -288,6 +288,7 @@ export function scoreIntents(input: ScoreIntentsInput): IntentScoringResult {
 
   if (input.clipQuality === 'noisy') {
     bump(breakdown, 'unknown', 0.14, 'clip quality looks limited');
+    bump(breakdown, 'sleepy', -0.05, 'noisy audio rarely fits a sleepy read');
   }
 
   if (input.clipQuality === 'unusable') {
